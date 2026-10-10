@@ -18,6 +18,9 @@ const UPSTREAM = process.env.UPSTREAM || 'https://am.noxxyrorr.biz.id';
 const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || '';
+// Cloudflare Turnstile (kunci uji Cloudflare dipakai jika belum diisi: selalu lolos, hanya untuk development)
+const TURNSTILE_SITE_KEY = process.env.TURNSTILE_SITE_KEY || '1x00000000000000000000AA';
+const TURNSTILE_SECRET_KEY = process.env.TURNSTILE_SECRET_KEY || '1x0000000000000000000000000000000AA';
 
 // Pakai folder public/ jika ada, kalau tidak pakai folder yang sama dengan server.js
 const PUBLIC_DIR = fs.existsSync(path.join(__dirname, 'public'))
@@ -78,10 +81,38 @@ async function recordActivation() {
   }
 }
 
+/* ---------- Cloudflare Turnstile: validasi token di server ---------- */
+async function verifyTurnstile(token, ip) {
+  if (!token || typeof token !== 'string' || token.length > 2048) return false;
+  try {
+    const params = new URLSearchParams({ secret: TURNSTILE_SECRET_KEY, response: token });
+    if (ip && net.isIP(ip)) params.set('remoteip', ip);
+    const r = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST', body: params, signal: AbortSignal.timeout(8000)
+    });
+    const d = await r.json();
+    return d.success === true;
+  } catch (err) {
+    console.warn('[AM Premify] Turnstile tidak terjangkau:', err.message);
+    return false;
+  }
+}
+
 /* ---------- Proxy ke upstream ---------- */
 async function proxyUpstream(req, res, pathname) {
   try {
-    const body = await readBody(req);
+    let body = await readBody(req);
+
+    // Verifikasi VIP wajib lolos Cloudflare Turnstile (dicek di server, bukan hanya di browser)
+    if (pathname === '/api/verify-link') {
+      let payload = {};
+      try { payload = JSON.parse(body.toString('utf8') || '{}'); } catch {}
+      const okHuman = await verifyTurnstile(payload.cfToken, clientIp(req));
+      if (!okHuman) return sendJson(res, 403, { success: false, error: 'Verifikasi manusia (Cloudflare) gagal atau kedaluwarsa. Ulangi verifikasi.' });
+      delete payload.cfToken;
+      body = Buffer.from(JSON.stringify(payload));
+    }
+
     const r = await fetch(UPSTREAM + pathname, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -253,7 +284,7 @@ const server = http.createServer((req, res) => {
   // Konfigurasi publik untuk frontend (hanya anon key, bukan service key)
   if (pathname === '/config.js') {
     res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-store' });
-    return res.end('window.APP_CONFIG=' + JSON.stringify({ supabaseUrl: SUPABASE_URL, supabaseAnonKey: SUPABASE_ANON_KEY }) + ';');
+    return res.end('window.APP_CONFIG=' + JSON.stringify({ supabaseUrl: SUPABASE_URL, supabaseAnonKey: SUPABASE_ANON_KEY, turnstileSiteKey: TURNSTILE_SITE_KEY }) + ';');
   }
 
   // URL bersih: /index.html -> /index
@@ -274,6 +305,9 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   console.log(`[AM Premify] Panel aktif di: http://localhost:${PORT}/index`);
   console.log(`[AM Premify] Upstream: ${UPSTREAM}`);
+  if (!process.env.TURNSTILE_SITE_KEY || !process.env.TURNSTILE_SECRET_KEY) {
+    console.log('[AM Premify] Turnstile: pakai kunci UJI (selalu lolos). Isi TURNSTILE_SITE_KEY & TURNSTILE_SECRET_KEY di .env untuk produksi.');
+  }
   if (SUPABASE_URL && SUPABASE_ANON_KEY && SUPABASE_SERVICE_KEY) {
     console.log('[AM Premify] Supabase: terhubung (real-time aktif)');
   } else {
