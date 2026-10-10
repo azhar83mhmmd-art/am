@@ -178,6 +178,30 @@ function setBtn(btn, busy, text) {
   $('span', btn).textContent = text;
 }
 
+/* Cloudflare Turnstile: tombol VIP terkunci sampai verifikasi manusia selesai */
+const cf = {
+  token: '', id: null,
+  card: $('#cf-card'), state: $('#cf-state'), btn: $('#verify-btn'),
+  set(st, label) { this.card.classList.remove('ok', 'err'); if (st) this.card.classList.add(st); this.state.textContent = label; },
+  lock() { this.token = ''; this.btn.disabled = true; },
+  ready(token) { this.token = token; this.btn.disabled = false; this.set('ok', 'TERVERIFIKASI'); term.log('ok', 'Verifikasi manusia (Cloudflare) berhasil.'); },
+  reset() { this.lock(); this.set('', 'BELUM'); try { if (window.turnstile && this.id !== null) window.turnstile.reset(this.id); } catch {} },
+  mount() {
+    const key = (window.APP_CONFIG && window.APP_CONFIG.turnstileSiteKey) || '';
+    if (!key) { this.set('err', 'ERROR'); $('#cf-loading').textContent = 'Site key Turnstile belum diisi'; return; }
+    if (!window.turnstile) { return setTimeout(() => this.mount(), 250); }
+    $('#cf-box').innerHTML = '';
+    this.id = window.turnstile.render('#cf-box', {
+      sitekey: key, theme: 'light', language: 'id',
+      callback: (t) => this.ready(t),
+      'expired-callback': () => { this.lock(); this.set('', 'KEDALUWARSA'); },
+      'timeout-callback': () => { this.lock(); this.set('', 'KEDALUWARSA'); },
+      'error-callback': () => { this.lock(); this.set('err', 'GAGAL'); term.log('err', 'Verifikasi Cloudflare gagal dimuat, muat ulang halaman.'); }
+    });
+  }
+};
+cf.mount();
+
 $('#email').addEventListener('input', () => setStep(1));
 
 $('#send-form').addEventListener('submit', async (e) => {
@@ -212,12 +236,16 @@ $('#verify-form').addEventListener('submit', async (e) => {
     term.log('warn', 'Email target belum diisi. Isi email di Langkah 1 terlebih dahulu.');
     return toast('Isi email target dulu di langkah 1', 'err');
   }
+  if (!cf.token) {
+    term.log('warn', 'Selesaikan verifikasi manusia (Cloudflare) terlebih dahulu.');
+    return toast('Selesaikan verifikasi manusia dulu', 'err');
+  }
   const btn = $('#verify-btn');
   setBtn(btn, true, 'Memverifikasi...');
   setStep(3);
   term.log('info', `[*] Memverifikasi link untuk ${email}...`);
   try {
-    const r = await postJson('/api/verify-link', { email, magicLink });
+    const r = await postJson('/api/verify-link', { email, magicLink, cfToken: cf.token });
     logRaw(r.data);
     if (r.ok) {
       const list = store.get('am_accounts', []);
@@ -238,7 +266,7 @@ $('#verify-form').addEventListener('submit', async (e) => {
     term.log('err', 'Gagal terhubung ke server: ' + err.message);
     setStep(2);
     toast('Gagal terhubung ke server', 'err');
-  } finally { setBtn(btn, false, 'Verifikasi & Aktifkan VIP'); }
+  } finally { setBtn(btn, false, 'Verifikasi & Aktifkan VIP'); cf.reset(); }
 });
 
 
