@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#2f5d3a">
+  <title>AM Premify - Premium Panel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<!-- Ikon SVG -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></symbol>
+    <symbol id="i-crown" viewBox="0 0 24 24"><path d="M2 18h20M3 7l4.5 5L12 5l4.5 7L21 7l-2 11H5z"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="1"/><path d="M22 6l-10 7L2 6"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><path d="M4 17l6-6-6-6M12 19h8"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="1"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1L5 6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+    <symbol id="i-ok" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+    <symbol id="i-fail" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M2 4h7a3 3 0 0 1 3 3v14a2 2 0 0 0-2-2H2zM22 4h-7a3 3 0 0 0-3 3v14a2 2 0 0 1 2-2h8z"/></symbol>
+    <symbol id="i-wa" viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8z"/><path d="M9 9.5c.3 2 2.5 4.2 4.5 4.5l1.3-1.3-1.8-1-.8.7c-.8-.4-1.5-1.1-1.9-1.9l.7-.8-1-1.8z"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/></symbol>
+    <symbol id="i-trend" viewBox="0 0 24 24"><path d="M23 6l-9.5 9.5-5-5L1 18M17 6h6v6"/></symbol>
+    <symbol id="i-pulse" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></symbol>
+    <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></symbol>
+    <symbol id="i-battery" viewBox="0 0 24 24"><rect x="2" y="7" width="17" height="10" rx="2"/><path d="M22 11v2M6 11v2"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M23 4v6h-6M1 20v-6h6M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 2l3.1 6.3 6.9 1-5 4.9 1.2 6.8-6.2-3.3-6.2 3.3L8 14.2 3 9.3l6.9-1z"/></symbol>
+  </defs>
+</svg>
+
+<template id="warn-tpl">
+  <div class="warn" role="alert">
+    <div class="warn-in">
+      <div class="warn-ic"><svg class="ic"><use href="#i-alert"/></svg></div>
+      <div>
+        <h4>PERINGATAN KERAS!</h4>
+        <strong>Jangan menjual belikan website ataupun akun Alight Motion yang premium!!!</strong>
+        <p>Segala bentuk jual beli, penyewaan, maupun penyebaran akses panel dan akun premium tidak diizinkan.</p>
+      </div>
+    </div>
+  </div>
+</template>
+
+<header class="topbar">
+  <div class="topbar-in">
+    <div class="brand">
+      <div class="logo"><svg class="ic"><use href="#i-bolt"/></svg></div>
+      <div>
+        <h1>AM Premify</h1>
+        <span class="tag">PREMIUM PANEL</span>
+      </div>
+    </div>
+    <nav class="tabs" role="tablist">
+      <a class="tab active" href="/index" data-tab="home" role="tab"><svg class="ic"><use href="#i-grid"/></svg><span>Dashboard</span></a>
+      <a class="tab" href="/premium" data-tab="premium" role="tab"><svg class="ic"><use href="#i-shield"/></svg><span>Premiumkan</span></a>
+      <a class="tab" href="/panduan" data-tab="guide" role="tab"><svg class="ic"><use href="#i-book"/></svg><span>Panduan</span></a>
+    </nav>
+  </div>
+</header>
+
+<main class="container">
+
+  <!-- DASHBOARD -->
+  <section class="view" data-view="home">
+    <div class="card hero">
+      <div class="hero-badges">
+        <span class="chip"><svg class="ic"><use href="#i-code"/></svg>DEVELOPER: KENZ</span>
+        <span class="chip gold"><svg class="ic"><use href="#i-star"/></svg>VIP PRO 1 TAHUN</span>
+      </div>
+      <h2>Halo, <mark data-user>kenz</mark>!</h2>
+      <p>Selamat datang di panel AM Premify. Pantau aktivitas aktivasi secara real-time dan kelola akun premium dari satu tempat.</p>
+      <div class="hero-actions">
+        <button class="btn btn-sand" data-goto="premium"><svg class="ic"><use href="#i-shield"/></svg><span>Premiumkan Akun</span></button>
+        <button class="btn btn-ghost" data-goto="guide"><svg class="ic"><use href="#i-book"/></svg><span>Panduan</span></button>
+      </div>
+    </div>
+
+    <div data-warn></div>
+
+    <div class="live-head">
+      <h3 class="card-title"><svg class="ic"><use href="#i-pulse"/></svg>Aktivitas Real-time</h3>
+      <span class="live-badge wait" id="live-badge"><i></i><b>MENYAMBUNG</b></span>
+    </div>
+
+    <div class="stats">
+      <div class="card stat">
+        <div class="stat-top">
+          <span class="kicker">TOTAL AKTIVASI SUKSES</span>
+          <span class="stat-icon"><svg class="ic"><use href="#i-trend"/></svg></span>
+        </div>
+        <div class="stat-num" id="stat-total">0</div>
+        <span class="stat-sub">Seluruh waktu</span>
+      </div>
+      <div class="card stat stat-gold">
+        <div class="stat-top">
+          <span class="kicker">AKTIVASI HARI INI</span>
+          <span class="stat-icon"><svg class="ic"><use href="#i-star"/></svg></span>
+        </div>
+        <div class="stat-num" id="stat-today">0</div>
+        <span class="stat-sub">Zona waktu WIB</span>
+      </div>
+    </div>
+    <p class="live-hint hidden" id="live-hint"></p>
+
+    <div class="grid">
+      <div class="card">
+        <div class="row-between">
+          <h3 class="card-title"><svg class="ic"><use href="#i-trend"/></svg>7 Hari Terakhir</h3>
+        </div>
+        <div class="bars" id="bars"><div class="empty wide">Menunggu data...</div></div>
+      </div>
+
+      <div class="card">
+        <div class="row-between">
+          <h3 class="card-title"><svg class="ic"><use href="#i-pulse"/></svg>Aktivitas Terbaru</h3>
+          <span class="muted-mono">LIVE FEED</span>
+        </div>
+        <div class="feed" id="feed"><div class="empty">Menunggu aktivitas baru...</div></div>
+      </div>
+    </div>
+
+    <div class="card visitor" id="visitor">
+      <div class="vis-head">
+        <div>
+          <h3 class="vis-title">Info Pengunjung</h3>
+          <p class="vis-sub">Data perangkatmu saat ini</p>
+        </div>
+        <span class="role-badge"><svg class="ic"><use href="#i-user"/></svg>USER</span>
+      </div>
+
+      <div class="vrow">
+        <div class="vicon green"><svg class="ic"><use href="#i-globe"/></svg></div>
+        <div class="vmeta">
+          <span class="vlabel">IP Address</span>
+          <b class="vval" id="v-ip">Memuat...</b>
+          <span class="vsub" id="v-loc">Mendeteksi lokasi...</span>
+        </div>
+        <button class="mini" id="v-copy" aria-label="Salin IP"><svg class="ic"><use href="#i-copy"/></svg></button>
+      </div>
+
+      <div class="vrow">
+        <div class="vicon orange"><svg class="ic"><use href="#i-battery"/></svg></div>
+        <div class="vmeta">
+          <span class="vlabel">Baterai</span>
+          <b class="vval" id="v-bat">Memeriksa...</b>
+          <div class="vbar"><i id="v-bat-bar"></i></div>
+          <span class="vsub" id="v-bat-sub">Membaca status baterai...</span>
+        </div>
+      </div>
+
+      <button class="link-btn" id="v-refresh"><svg class="ic sm"><use href="#i-refresh"/></svg>Muat ulang info</button>
+    </div>
+
+    <div class="grid">
+      <div class="card contact-mini">
+        <span class="kicker">BUTUH BANTUAN?</span>
+        <p>Ada kendala saat aktivasi? Tim kami siap membantu.</p>
+        <a class="btn btn-wa js-wa" target="_blank" rel="noopener"><svg class="ic"><use href="#i-wa"/></svg><span>Hubungi Kami</span></a>
+      </div>
+
+      <div class="card">
+        <div class="row-between">
+          <h3 class="card-title"><svg class="ic"><use href="#i-user"/></svg>Akun Saya</h3>
+          <button class="link-btn" id="clear-all">Hapus Semua</button>
+        </div>
+        <div id="recent" class="list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PREMIUMKAN AKUN -->
+  <section class="view hidden" data-view="premium">
+    <div data-warn></div>
+    <div class="stepper" id="stepper">
+      <div class="stp active" data-step="1"><span class="stp-k">LANGKAH 1</span><b>Email</b><svg class="ic"><use href="#i-check"/></svg></div>
+      <div class="stp" data-step="2"><span class="stp-k">LANGKAH 2</span><b>Link</b><svg class="ic"><use href="#i-check"/></svg></div>
+      <div class="stp" data-step="3"><span class="stp-k">LANGKAH 3</span><b>VIP Pro</b><svg class="ic"><use href="#i-check"/></svg></div>
+    </div>
+
+    <div class="grid">
+      <form id="send-form" class="card form">
+        <div class="step"><span class="num">1</span>Kirim Magic Link</div>
+        <p class="hint">Link verifikasi akan dikirim langsung ke email akun Alight Motion.</p>
+        <label class="kicker" for="email">EMAIL TARGET</label>
+        <div class="field">
+          <svg class="ic"><use href="#i-mail"/></svg>
+          <input id="email" type="email" class="input" placeholder="target@gmail.com" required autocomplete="off">
+        </div>
+        <button id="send-btn" class="btn" type="submit"><svg class="ic"><use href="#i-send"/></svg><span>Kirim Magic Link</span></button>
+      </form>
+
+      <form id="verify-form" class="card form">
+        <div class="step"><span class="num">2</span>Verifikasi &amp; Jadi Premium</div>
+        <p class="hint">Tempel link dari email, lalu aktifkan lisensi VIP Pro.</p>
+        <label class="kicker" for="magic">TEMPEL LINK DARI EMAIL</label>
+        <div class="field top">
+          <svg class="ic"><use href="#i-link"/></svg>
+          <textarea id="magic" class="input" rows="3" placeholder="https://alightcreative.page.link/..." required></textarea>
+        </div>
+        <button id="verify-btn" class="btn btn-dark" type="submit"><svg class="ic"><use href="#i-shield"/></svg><span>Verifikasi &amp; Aktifkan VIP</span></button>
+      </form>
+    </div>
+
+    <div class="term" id="term">
+      <div class="term-bar">
+        <div class="dots"><i></i><i></i><i></i></div>
+        <div class="term-title"><svg class="ic sm"><use href="#i-terminal"/></svg>premify_terminal.log</div>
+        <div class="term-actions">
+          <button class="tbtn" id="term-copy" title="Salin log"><svg class="ic sm"><use href="#i-copy"/></svg><span>Salin</span></button>
+          <button class="tbtn icon" id="term-clear" title="Bersihkan log"><svg class="ic sm"><use href="#i-trash"/></svg></button>
+          <button class="tbtn icon" id="term-toggle" title="Ciutkan"><svg class="ic sm"><use href="#i-chev"/></svg></button>
+        </div>
+      </div>
+      <div class="term-body" id="term-body" role="log" aria-live="polite"></div>
+    </div>
+
+    <a class="help-bar js-wa" target="_blank" rel="noopener">
+      <svg class="ic"><use href="#i-wa"/></svg>
+      <span>Ada kendala? <b>Hubungi kami via WhatsApp</b></span>
+      <svg class="ic"><use href="#i-arrow"/></svg>
+    </a>
+  </section>
+
+  <!-- PANDUAN -->
+  <section class="view hidden" data-view="guide">
+    <div class="card head-card">
+      <span class="kicker">PANDUAN PENGGUNAAN</span>
+      <h2>3 langkah, akun jadi premium</h2>
+      <p>Ikuti alur berikut dari awal sampai akun aktif sebagai VIP Pro.</p>
+    </div>
+
+    <div class="guide">
+      <article class="card g-card">
+        <div class="g-top"><span class="g-num">01</span><span class="g-ic"><svg class="ic"><use href="#i-mail"/></svg></span></div>
+        <h3>MASUKKAN EMAIL</h3>
+        <p>Ketikkan email Alight Motion Anda. Sistem memicu pengiriman magic link resmi melalui IdentityToolkit Android.</p>
+      </article>
+      <article class="card g-card">
+        <div class="g-top"><span class="g-num">02</span><span class="g-ic"><svg class="ic"><use href="#i-link"/></svg></span></div>
+        <h3>SALIN DARI EMAIL</h3>
+        <p>Buka pesan masuk dari Alight Motion di inbox / spam. Salin tautan tombol "Sign In / Verify".</p>
+      </article>
+      <article class="card g-card">
+        <div class="g-top"><span class="g-num">03</span><span class="g-ic"><svg class="ic"><use href="#i-crown"/></svg></span></div>
+        <h3>AKTIVASI OTOMATIS</h3>
+        <p>Tempel link dan klik verifikasi. Sistem otomatis login dan mengaktifkan lisensi VIP Pro 1 Tahun.</p>
+      </article>
+    </div>
+
+    <div data-warn></div>
+
+    <div class="card contact">
+      <div class="contact-info">
+        <span class="kicker">HUBUNGI KAMI</span>
+        <h3>Masih bingung atau ada kendala?</h3>
+        <p>Klik tombol di bawah, pesan otomatis langsung terisi dan tinggal dikirim.</p>
+        <div class="phone"><svg class="ic"><use href="#i-phone"/></svg><span id="phone-text">082357961890</span></div>
+      </div>
+      <a class="btn btn-wa js-wa" target="_blank" rel="noopener"><svg class="ic"><use href="#i-wa"/></svg><span>Chat WhatsApp</span></a>
+    </div>
+
+    <button class="btn btn-dark" data-goto="premium"><svg class="ic"><use href="#i-shield"/></svg><span>Mulai Premiumkan Akun</span></button>
+  </section>
+
+</main>
+
+<footer class="footer">AM Premify v3.0 &bull; Developer kenz</footer>
+<div id="warn-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="wm-title">
+  <div class="modal-card">
+    <div class="modal-stripe"></div>
+    <div class="modal-body">
+      <div class="warn-ic big"><svg class="ic"><use href="#i-ban"/></svg></div>
+      <h3 id="wm-title">PERINGATAN KERAS!</h3>
+      <p class="wm-main">JANGAN MENJUAL BELIKAN WEBSITE ATAUPUN AKUN ALIGHT MOTION YANG PREMIUM!!!</p>
+      <ul>
+        <li><svg class="ic sm"><use href="#i-fail"/></svg>Dilarang menjual atau menyewakan website / akses panel ini.</li>
+        <li><svg class="ic sm"><use href="#i-fail"/></svg>Dilarang memperjualbelikan akun Alight Motion premium hasil aktivasi.</li>
+      </ul>
+      <button class="btn btn-sand" id="warn-ok"><svg class="ic"><use href="#i-check"/></svg><span>Saya Mengerti</span></button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+<script src="/config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
