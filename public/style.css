@@ -320,3 +320,12 @@ a { color: inherit; text-decoration: none; }
   .vval { font-size: 1.05rem; }
   .vicon { width: 44px; height: 44px; }
 }
+
+/* Cloudflare Turnstile */
+.cf-card { display: flex; flex-direction: column; gap: 10px; }
+.cf-head { display: flex; align-items: center; gap: 8px; font-family: 'JetBrains Mono', monospace; font-size: .78rem; letter-spacing: .08em; }
+.cf-state { margin-left: auto; padding: 2px 8px; border: 2px solid var(--ink); background: var(--gold); font-weight: 700; font-size: .7rem; }
+.cf-card.ok .cf-state { background: var(--moss); }
+.cf-card.err .cf-state { background: var(--red); color: #fff; }
+.cf-box { width: 100%; min-height: 70px; display: flex; align-items: center; justify-content: center; border: var(--bd); background: #fff; padding: 6px; overflow: hidden; }
+.cf-loading { font-family: 'JetBrains Mono', monospace; font-size: .8rem; color: #7a786b; }
