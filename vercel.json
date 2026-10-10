@@ -1,0 +1,7 @@
+{
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/premium", "destination": "/index.html" },
+    { "source": "/panduan", "destination": "/index.html" }
+  ]
+}
