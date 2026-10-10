@@ -1,0 +1,8 @@
+{
+  "name": "am-premify",
+  "version": "3.0.0",
+  "description": "AM Premify - Premium Panel",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" }
+}
