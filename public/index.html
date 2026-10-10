@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 </head>
 <body>
 
@@ -216,8 +217,17 @@
           <svg class="ic"><use href="#i-link"/></svg>
           <textarea id="magic" class="input" rows="3" placeholder="https://alightcreative.page.link/..." required></textarea>
         </div>
-        <button id="verify-btn" class="btn btn-dark" type="submit"><svg class="ic"><use href="#i-shield"/></svg><span>Verifikasi &amp; Aktifkan VIP</span></button>
+        <button id="verify-btn" class="btn btn-dark" type="submit" disabled><svg class="ic"><use href="#i-shield"/></svg><span>Verifikasi &amp; Aktifkan VIP</span></button>
       </form>
+    </div>
+
+    <div class="card cf-card" id="cf-card">
+      <div class="cf-head">
+        <svg class="ic"><use href="#i-shield"/></svg>
+        <b>VERIFIKASI MANUSIA</b>
+        <span class="cf-state" id="cf-state">BELUM</span>
+      </div>
+      <div class="cf-box" id="cf-box"><span class="cf-loading" id="cf-loading">Memuat Cloudflare...</span></div>
     </div>
 
     <div class="term" id="term">
