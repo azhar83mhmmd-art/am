@@ -263,6 +263,8 @@ a { color: inherit; text-decoration: none; }
 .feed-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; background: #fff; border: 2px solid var(--ink); font-size: .84rem; animation: ln .3s ease; }
 .feed-item .dot { width: 10px; height: 10px; flex-shrink: 0; background: var(--wa); border: 2px solid var(--ink); }
 .feed-item time { margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: .7rem; color: #5f5e52; white-space: nowrap; }
+.feed-item .feed-txt { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.feed-item .feed-mail { font-weight: 600; font-size: .78rem; color: #3b3a33; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .feed-item.new { background: var(--sage); }
 
 /* ===== Peringatan keras ===== */
