@@ -19,6 +19,9 @@ const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || '';
 // Cloudflare Turnstile (kunci uji Cloudflare dipakai jika belum diisi: selalu lolos, hanya untuk development)
+// Email di feed publik disamarkan: 5 huruf pertama terlihat, sisanya ***, domain utuh (kenzo***@gmail.com).
+// Set MASK_EMAIL=false di .env hanya jika ingin menampilkan email penuh.
+const MASK_EMAIL = String(process.env.MASK_EMAIL || 'true').toLowerCase() !== 'false';
 const TURNSTILE_SITE_KEY = process.env.TURNSTILE_SITE_KEY || '1x00000000000000000000AA';
 const TURNSTILE_SECRET_KEY = process.env.TURNSTILE_SECRET_KEY || '1x0000000000000000000000000000000AA';
 
@@ -60,19 +63,38 @@ function readBody(req) {
 }
 
 /* ---------- Supabase: catat aktivasi sukses (hanya server yang boleh insert) ---------- */
-async function recordActivation() {
+function cleanEmail(v) {
+  const e = String(v || '').trim().toLowerCase();
+  if (e.length > 254 || !/^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/.test(e)) return '';
+  if (!MASK_EMAIL) return e;
+  const [u, d] = e.split('@');
+  // 5 huruf pertama tetap terlihat, sisanya disensor; domain (@gmail.com dll) tetap utuh
+  return u.length > 5 ? u.slice(0, 5) + '***@' + d : e;
+}
+
+async function insertActivation(row) {
+  return fetch(`${SUPABASE_URL}/rest/v1/activations`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_SERVICE_KEY,
+      Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=minimal'
+    },
+    body: JSON.stringify(row)
+  });
+}
+
+async function recordActivation(email) {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return false;
   try {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/activations`, {
-      method: 'POST',
-      headers: {
-        apikey: SUPABASE_SERVICE_KEY,
-        Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
-        'Content-Type': 'application/json',
-        Prefer: 'return=minimal'
-      },
-      body: JSON.stringify({ source: 'verify' })
-    });
+    const safe = cleanEmail(email);
+    let r = await insertActivation(safe ? { source: 'verify', email: safe } : { source: 'verify' });
+    // Kolom email belum ada (supabase.sql belum dijalankan)? Tetap catat tanpa email supaya statistik tidak berhenti.
+    if (!r.ok && safe) {
+      console.warn('[AM Premify] Insert dengan email gagal (' + r.status + '), coba tanpa email. Jalankan supabase.sql.');
+      r = await insertActivation({ source: 'verify' });
+    }
     if (!r.ok) console.warn('[AM Premify] Supabase insert gagal:', r.status, await r.text());
     return r.ok;
   } catch (err) {
@@ -102,6 +124,7 @@ async function verifyTurnstile(token, ip) {
 async function proxyUpstream(req, res, pathname) {
   try {
     let body = await readBody(req);
+    let activationEmail = '';
 
     // Verifikasi VIP wajib lolos Cloudflare Turnstile (dicek di server, bukan hanya di browser)
     if (pathname === '/api/verify-link') {
@@ -109,6 +132,7 @@ async function proxyUpstream(req, res, pathname) {
       try { payload = JSON.parse(body.toString('utf8') || '{}'); } catch {}
       const okHuman = await verifyTurnstile(payload.cfToken, clientIp(req));
       if (!okHuman) return sendJson(res, 403, { success: false, error: 'Verifikasi manusia (Cloudflare) gagal atau kedaluwarsa. Ulangi verifikasi.' });
+      activationEmail = payload.email;
       delete payload.cfToken;
       body = Buffer.from(JSON.stringify(payload));
     }
@@ -126,7 +150,7 @@ async function proxyUpstream(req, res, pathname) {
         if (data && typeof data === 'object' && !Array.isArray(data)) {
           const ok = r.ok && data.success !== false && !data.error;
           if (ok) {
-            data.recorded = await recordActivation();
+            data.recorded = await recordActivation(activationEmail);
             text = JSON.stringify(data);
           }
         }
