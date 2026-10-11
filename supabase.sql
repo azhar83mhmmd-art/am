@@ -4,12 +4,15 @@
 -- Aman dijalankan berulang kali.
 -- =====================================================================
 
--- 1) Tabel aktivitas sukses (tanpa menyimpan email / data pribadi)
+-- 1) Tabel aktivitas sukses
 create table if not exists public.activations (
   id          bigint generated always as identity primary key,
   source      text        not null default 'panel',
   created_at  timestamptz not null default now()
 );
+
+-- Kolom email (tambahan): data lama TIDAK dihapus/diubah, baris lama berisi email kosong (null)
+alter table public.activations add column if not exists email text;
 
 create index if not exists activations_created_at_idx
   on public.activations (created_at desc);
