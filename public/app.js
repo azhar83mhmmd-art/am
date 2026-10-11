@@ -344,11 +344,14 @@ const live = {
   feedItem(row, isNew) {
     const el = document.createElement('div');
     el.className = 'feed-item' + (isNew ? ' new' : '');
-    el.innerHTML = `<span class="dot"></span><span>Aktivasi sukses</span><time>${clock(row.created_at)}</time>`;
+    const mail = row.email ? `<small class="feed-mail">${esc(row.email)}</small>` : '';
+    el.innerHTML = `<span class="dot"></span><div class="feed-txt"><b>Aktivasi sukses</b>${mail}</div><time>${clock(row.created_at)}</time>`;
     return el;
   },
   async loadFeed() {
-    const { data } = await this.client.from('activations').select('id,created_at').order('created_at', { ascending: false }).limit(8);
+    const q = (cols) => this.client.from('activations').select(cols).order('created_at', { ascending: false }).limit(8);
+    let { data, error } = await q('id,created_at,email');
+    if (error) ({ data } = await q('id,created_at')); // kolom email belum ada: tetap tampilkan feed lama
     if (!data || !data.length) return;
     const feed = $('#feed');
     feed.innerHTML = '';
