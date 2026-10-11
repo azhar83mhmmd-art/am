@@ -32,7 +32,7 @@ const PUBLIC_DIR = fs.existsSync(path.join(__dirname, 'public'))
 const BLOCKED = ['server.js', 'package.json', 'package-lock.json', 'vercel.json', 'supabase.sql'];
 
 // URL bersih (tanpa .html) -> semuanya dilayani oleh index.html
-const PAGES = new Set(['/', '/index', '/premium', '/panduan']);
+const PAGES = new Set(['/', '/index', '/premium', '/panduan', '/biodata']);
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
