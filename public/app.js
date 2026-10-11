@@ -1,6 +1,5 @@
 // AM Premify - Premium Panel (frontend)
 const CONFIG = {
-  user: 'kenz',
   waNumber: '6282357961890' // 082357961890 dalam format internasional
 };
 
@@ -24,13 +23,14 @@ function toast(msg, type = '') {
 }
 
 /* Navigasi (URL bersih tanpa .html: /index, /premium, /panduan) */
-const ROUTES = { home: '/index', premium: '/premium', guide: '/panduan' };
-const TITLES = { home: 'Dashboard', premium: 'Premiumkan Akun', guide: 'Panduan' };
-const VIEW_BY_PATH = { '/': 'home', '/index': 'home', '/premium': 'premium', '/panduan': 'guide' };
+const ROUTES = { home: '/index', premium: '/premium', guide: '/panduan', bio: '/biodata' };
+const TITLES = { home: 'Dashboard', premium: 'Premiumkan Akun', guide: 'Panduan', bio: 'Biodata Developer' };
+const VIEW_BY_PATH = { '/': 'home', '/index': 'home', '/premium': 'premium', '/panduan': 'guide', '/biodata': 'bio' };
 
 function show(view, push = true) {
   $$('.view').forEach((v) => v.classList.toggle('hidden', v.dataset.view !== view));
   $$('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === view));
+  document.body.classList.toggle('bio-mode', view === 'bio');
   document.title = `AM Premify - ${TITLES[view]}`;
   if (push && location.pathname !== ROUTES[view]) history.pushState({ view }, '', ROUTES[view]);
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -44,11 +44,35 @@ $$('.tab').forEach((t) => t.addEventListener('click', (e) => {
 $$('[data-goto]').forEach((b) => b.addEventListener('click', () => show(b.dataset.goto)));
 window.addEventListener('popstate', () => show(VIEW_BY_PATH[location.pathname] || 'home', false));
 
+/* Menu (bottom sheet) + Biodata Developer */
+const menu = {
+  el: $('#sheet'),
+  open() { this.el.classList.remove('hidden'); requestAnimationFrame(() => this.el.classList.add('open')); document.body.classList.add('no-scroll'); $('#menu-open').setAttribute('aria-expanded', 'true'); },
+  close() {
+    if (this.el.classList.contains('hidden')) return;
+    this.el.classList.remove('open');
+    document.body.classList.remove('no-scroll');
+    $('#menu-open').setAttribute('aria-expanded', 'false');
+    setTimeout(() => this.el.classList.add('hidden'), 220);
+  }
+};
+$('#menu-open').addEventListener('click', () => menu.open());
+$$('[data-close]', menu.el).forEach((el) => el.addEventListener('click', () => menu.close()));
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') menu.close(); });
+$$('[data-goto-link]').forEach((a) => a.addEventListener('click', (e) => {
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+  e.preventDefault();
+  menu.close();
+  show(a.dataset.gotoLink);
+}));
+$('#bio-back').addEventListener('click', () => show('home'));
+
 /* WhatsApp: pesan otomatis (menyertakan email jika sudah diisi) */
 function waLink() {
   const email = ($('#email') && $('#email').value.trim()) || '';
+  const name = (typeof userName === 'function' && userName()) || '';
   const lines = [
-    'Halo kak, saya butuh bantuan terkait AM Premify.',
+    name ? `Halo kak, saya ${name}, butuh bantuan terkait AM Premify.` : 'Halo kak, saya butuh bantuan terkait AM Premify.',
     '',
     email ? `Email akun: ${email}` : 'Email akun: -',
     'Kendala: '
@@ -71,6 +95,7 @@ function setStep(n) {
 
 /* Dashboard */
 function renderHome() {
+  if (typeof renderMini === 'function') renderMini();
   const list = store.get('am_accounts', []);
   const box = $('#recent');
   if (!list.length) { box.innerHTML = '<div class="empty">Belum ada akun premium.</div>'; return; }
@@ -256,7 +281,9 @@ $('#verify-form').addEventListener('submit', async (e) => {
       if (r.data && r.data.recorded === true) term.log('info', 'Aktivitas tercatat ke Supabase (statistik real-time diperbarui).');
       else if (r.data && r.data.recorded === false) term.log('warn', 'Aktivitas belum tercatat ke Supabase. Cek isi .env dan jalankan supabase.sql.');
       setStep(4);
-      toast('Akun berhasil diaktifkan VIP');
+      FX.confetti();
+      renderMini();
+      toast(`Mantap ${userName() || ''}! Akun berhasil jadi VIP`.replace(' !', '!'));
     } else {
       term.log('err', 'Verifikasi gagal: ' + errText(r));
       setStep(2);
@@ -272,14 +299,14 @@ $('#verify-form').addEventListener('submit', async (e) => {
 
 /* Peringatan keras: sisipkan ke semua slot + modal sekali tampil */
 $$('[data-warn]').forEach((slot) => slot.appendChild($('#warn-tpl').content.cloneNode(true)));
-(function warnModal() {
-  const modal = $('#warn-modal');
-  if (!store.get('am_warn_ok', false)) modal.classList.remove('hidden');
-  $('#warn-ok').addEventListener('click', () => {
-    store.set('am_warn_ok', Date.now());
-    modal.classList.add('hidden');
-  });
-})();
+function showWarnIfNeeded() {
+  if (!store.get('am_warn_ok', false)) $('#warn-modal').classList.remove('hidden');
+}
+$('#warn-ok').addEventListener('click', () => {
+  store.set('am_warn_ok', Date.now());
+  $('#warn-modal').classList.add('hidden');
+  if (typeof FX !== 'undefined') FX.burstAt(innerWidth / 2, innerHeight / 2, 40);
+});
 
 /* Statistik real-time (Supabase) */
 const fmt = (n) => Number(n || 0).toLocaleString('id-ID');
@@ -361,6 +388,8 @@ const live = {
     const feed = $('#feed');
     if (!$('.feed-item', feed)) feed.innerHTML = '';
     feed.prepend(this.feedItem(row, true));
+    const r = feed.getBoundingClientRect();
+    if (r.top < innerHeight && r.bottom > 0) FX.burstAt(r.left + 40, Math.max(r.top, 60) + 20, 26);
     while (feed.children.length > 8) feed.lastChild.remove();
     setTimeout(() => feed.firstChild && feed.firstChild.classList.remove('new'), 4000);
   },
@@ -536,8 +565,378 @@ const visitor = {
 };
 visitor.init();
 
+/* =====================================================================
+   v4: Nama pengguna, welcome, efek, fitur tambahan
+   ===================================================================== */
+const REDUCED = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+const COLORS = ['#ffd23f', '#ff8fab', '#7cc6fe', '#7be495', '#ff9f5a', '#c3a6ff', '#0d0d0d'];
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/* ---- Nama ---- */
+function cleanName(v) {
+  return String(v || '').replace(/[<>&"`\\\/{}\[\]|^~$%]/g, '').replace(/\s+/g, ' ').trim().slice(0, 20);
+}
+function userName() { return cleanName(store.get('am_user', '')); }
+function validateName(v) {
+  if (v.length < 2) return 'Nama minimal 2 karakter.';
+  if (!/[\p{L}\p{N}]/u.test(v)) return 'Nama harus berisi huruf atau angka.';
+  return '';
+}
+function greetWord() {
+  const h = new Date().getHours();
+  return h < 4 ? 'Selamat malam' : h < 11 ? 'Selamat pagi' : h < 15 ? 'Selamat siang' : h < 18 ? 'Selamat sore' : 'Selamat malam';
+}
+function applyUser() {
+  const n = userName();
+  $$('[data-user]').forEach((el) => (el.textContent = n || 'Teman'));
+  $('#avatar').textContent = (n.match(/[\p{L}\p{N}]/u) || ['?'])[0];
+  $('#pname').textContent = n;
+  $('#profile-btn').setAttribute('aria-label', n ? `Ganti nama (${n})` : 'Ganti nama');
+  updateClock();
+}
+
+/* ---- Jam & sapaan ---- */
+function updateClock() {
+  const d = new Date(), p = (x) => String(x).padStart(2, '0');
+  $('#clock').textContent = `${p(d.getHours())}.${p(d.getMinutes())}.${p(d.getSeconds())}`;
+  const date = d.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short' });
+  $('#greet').textContent = `${greetWord()} \u2022 ${date}`.toUpperCase();
+}
+setInterval(updateClock, 1000);
+
+/* ---- Typewriter ---- */
+const typing = {
+  token: 0,
+  async type(el, text, speed = 38) {
+    const my = ++this.token;
+    el.textContent = '';
+    if (REDUCED) { el.textContent = text; return true; }
+    for (const ch of text) {
+      if (my !== this.token) return false;
+      el.textContent += ch;
+      await sleep(speed + Math.random() * 25);
+    }
+    return true;
+  }
+};
+async function heroTyper() {
+  const el = $('#typer');
+  const lines = [
+    'Pantau aktivitas aktivasi secara real-time.',
+    'Kelola akun premium dari satu tempat.',
+    'Aktivasi VIP Pro 1 tahun, otomatis dan cepat.',
+    'Satu langkah lagi menuju akun premium.'
+  ];
+  let i = 0;
+  for (;;) {
+    const t = ++heroTyper.tok;
+    el.textContent = '';
+    for (const ch of lines[i % lines.length]) {
+      if (t !== heroTyper.tok) return;
+      el.textContent += ch;
+      await sleep(REDUCED ? 0 : 34);
+    }
+    await sleep(2400);
+    while (el.textContent.length && !REDUCED) { el.textContent = el.textContent.slice(0, -1); await sleep(14); }
+    i++;
+  }
+}
+heroTyper.tok = 0;
+
+/* ---- Efek partikel / konfeti (canvas) ---- */
+const FX = {
+  cv: $('#fx-canvas'), ctx: null, parts: [], on: false, dpr: 1, w: 0, h: 0, last: 0,
+  get enabled() { return store.get('am_fx', true) && !REDUCED; },
+  init() {
+    this.ctx = this.cv.getContext('2d');
+    const rs = () => {
+      this.dpr = Math.min(2, window.devicePixelRatio || 1);
+      this.w = innerWidth; this.h = innerHeight;
+      this.cv.width = this.w * this.dpr; this.cv.height = this.h * this.dpr;
+      this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    };
+    rs(); addEventListener('resize', rs);
+  },
+  add(p) { if (this.parts.length < 420) this.parts.push(p); if (!this.on) { this.on = true; this.last = performance.now(); requestAnimationFrame((t) => this.loop(t)); } },
+  burstAt(x, y, n = 60, spread = Math.PI * 2, angle = 0, power = 9) {
+    if (!this.enabled) return;
+    for (let i = 0; i < n; i++) {
+      const a = angle + (Math.random() - .5) * spread, v = power * (.45 + Math.random() * .8);
+      this.add({
+        x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 2, g: .28, drag: .985,
+        s: 6 + Math.random() * 8, r: Math.random() * 6, vr: (Math.random() - .5) * .35,
+        c: COLORS[(Math.random() * COLORS.length) | 0], shape: Math.random() < .3 ? 'c' : 'r', life: 1, decay: .0045 + Math.random() * .005
+      });
+    }
+  },
+  confetti() {
+    if (!this.enabled) return;
+    const w = this.w, h = this.h;
+    this.burstAt(w * .08, h * .95, 70, 1.1, -Math.PI / 3, 17);
+    this.burstAt(w * .92, h * .95, 70, 1.1, -Math.PI * 2 / 3, 17);
+    this.burstAt(w * .5, h * .55, 60, Math.PI * 2, 0, 11);
+  },
+  spark(x, y) {
+    if (!this.enabled) return;
+    this.add({
+      x, y, vx: (Math.random() - .5) * 2.2, vy: (Math.random() - .5) * 2.2 - .6, g: .06, drag: .96,
+      s: 4 + Math.random() * 5, r: Math.random() * 3, vr: .1, c: COLORS[(Math.random() * 6) | 0], shape: 'r', life: 1, decay: .035
+    });
+  },
+  loop(t) {
+    const dt = Math.min(2, (t - this.last) / 16.67 || 1); this.last = t;
+    const c = this.ctx;
+    c.clearRect(0, 0, this.w, this.h);
+    this.parts = this.parts.filter((p) => p.life > 0 && p.y < this.h + 40);
+    for (const p of this.parts) {
+      p.vx *= p.drag; p.vy = p.vy * p.drag + p.g * dt;
+      p.x += p.vx * dt; p.y += p.vy * dt; p.r += p.vr * dt; p.life -= p.decay * dt;
+      c.save();
+      c.globalAlpha = Math.max(0, Math.min(1, p.life * 2));
+      c.translate(p.x, p.y); c.rotate(p.r);
+      c.fillStyle = p.c; c.strokeStyle = '#0d0d0d'; c.lineWidth = 2;
+      if (p.shape === 'c') { c.beginPath(); c.arc(0, 0, p.s / 2, 0, 7); c.fill(); c.stroke(); }
+      else { c.fillRect(-p.s / 2, -p.s / 3, p.s, p.s * .66); c.strokeRect(-p.s / 2, -p.s / 3, p.s, p.s * .66); }
+      c.restore();
+    }
+    if (this.parts.length) requestAnimationFrame((n) => this.loop(n));
+    else { this.on = false; c.clearRect(0, 0, this.w, this.h); }
+  }
+};
+FX.init();
+
+/* Jejak kursor (mouse saja) */
+(function sparkTrail() {
+  let lx = 0, ly = 0, lt = 0;
+  addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'mouse' || !FX.enabled) return;
+    const now = performance.now();
+    if (now - lt < 45 || Math.hypot(e.clientX - lx, e.clientY - ly) < 18) return;
+    lt = now; lx = e.clientX; ly = e.clientY;
+    FX.spark(e.clientX, e.clientY);
+  }, { passive: true });
+})();
+
+/* Ripple pada tombol */
+document.addEventListener('pointerdown', (e) => {
+  const b = e.target.closest && e.target.closest('.btn');
+  if (!b || b.disabled) return;
+  const r = b.getBoundingClientRect(), d = Math.max(r.width, r.height) * 2;
+  const rp = document.createElement('span');
+  rp.className = 'ripple';
+  rp.style.cssText = `width:${d}px;height:${d}px;left:${e.clientX - r.left - d / 2}px;top:${e.clientY - r.top - d / 2}px`;
+  b.appendChild(rp);
+  setTimeout(() => rp.remove(), 650);
+});
+
+/* Tilt 3D untuk kartu (perangkat dengan kursor) */
+(function tilt() {
+  if (REDUCED || !matchMedia('(hover: hover)').matches) return;
+  document.addEventListener('pointermove', (e) => {
+    const el = e.target.closest && e.target.closest('.stat, .ms, .g-card');
+    $$('.tilt').forEach((t) => { if (t !== el) { t.classList.remove('tilt'); t.style.transform = ''; } });
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5;
+    el.classList.add('tilt');
+    el.style.transform = `perspective(700px) rotateX(${(-y * 9).toFixed(2)}deg) rotateY(${(x * 11).toFixed(2)}deg) translateY(-4px)`;
+  }, { passive: true });
+  document.documentElement.addEventListener('pointerleave', () => $$('.tilt').forEach((t) => { t.classList.remove('tilt'); t.style.transform = ''; }));
+})();
+
+/* Parallax + cahaya kursor di hero */
+(function heroFx() {
+  const hero = $('.hero');
+  if (!hero || REDUCED) return;
+  hero.addEventListener('pointermove', (e) => {
+    const r = hero.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+    hero.style.setProperty('--mx', (x * 100) + '%');
+    hero.style.setProperty('--my', (y * 100) + '%');
+    hero.style.setProperty('--px', ((x - .5) * 2).toFixed(2));
+    hero.style.setProperty('--py', ((y - .5) * 2).toFixed(2));
+  });
+  hero.addEventListener('pointerleave', () => { hero.style.setProperty('--px', 0); hero.style.setProperty('--py', 0); });
+})();
+
+/* Progres scroll + tombol ke atas */
+(function scrollUi() {
+  const bar = $('#progress'), top = $('#to-top');
+  let tick = false;
+  const run = () => {
+    tick = false;
+    const max = document.documentElement.scrollHeight - innerHeight;
+    const p = max > 0 ? Math.min(1, scrollY / max) : 0;
+    bar.style.setProperty('--p', p.toFixed(4));
+    bar.classList.toggle('show', scrollY > 8 && max > 0);
+    top.classList.toggle('hidden', scrollY < 420);
+  };
+  addEventListener('scroll', () => { if (!tick) { tick = true; requestAnimationFrame(run); } }, { passive: true });
+  addEventListener('resize', run);
+  top.addEventListener('click', () => scrollTo({ top: 0, behavior: REDUCED ? 'auto' : 'smooth' }));
+  run();
+})();
+
+/* ---- Tema warna + toggle efek ---- */
+const ACCENT_HEX = { yellow: '#ffd23f', mint: '#6ee7a0', blue: '#7cc6fe', pink: '#ff8fab', purple: '#c3a6ff', orange: '#ff9f5a' };
+function applyAccent(name, save = true) {
+  if (!ACCENT_HEX[name]) name = 'yellow';
+  document.documentElement.setAttribute('data-accent', name);
+  const m = document.querySelector('meta[name="theme-color"]');
+  if (m) m.setAttribute('content', ACCENT_HEX[name]);
+  $$('#swatches .sw').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.accent === name)));
+  if (save) store.set('am_accent', name);
+}
+applyAccent(store.get('am_accent', 'yellow'), false);
+$('#swatches').addEventListener('click', (e) => {
+  const b = e.target.closest('.sw');
+  if (!b) return;
+  applyAccent(b.dataset.accent);
+  const r = b.getBoundingClientRect();
+  FX.burstAt(r.left + r.width / 2, r.top + r.height / 2, 22, Math.PI * 2, 0, 7);
+  toast('Tema warna diganti');
+});
+$('#fx-toggle').checked = store.get('am_fx', true);
+$('#fx-toggle').addEventListener('change', (e) => {
+  store.set('am_fx', e.target.checked);
+  toast(e.target.checked ? 'Efek partikel aktif' : 'Efek partikel dimatikan');
+});
+
+/* ---- Form: validasi email live + tombol tempel ---- */
+const emailOk = (v) => /^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/.test(v);
+$('#email').addEventListener('input', (e) => $('#email').closest('.field').classList.toggle('valid', emailOk(e.target.value.trim())));
+$('#paste-btn').addEventListener('click', async () => {
+  try {
+    const t = (await navigator.clipboard.readText() || '').trim();
+    if (!t) return toast('Clipboard kosong', 'err');
+    $('#magic').value = t;
+    $('#magic').dispatchEvent(new Event('input', { bubbles: true }));
+    toast(/^https?:\/\//i.test(t) ? 'Link ditempel' : 'Teks ditempel (bukan link, cek lagi)', /^https?:\/\//i.test(t) ? '' : 'err');
+  } catch { toast('Izin clipboard ditolak, tempel manual', 'err'); }
+});
+
+/* ---- Statistik pribadi (streak, akun, kunjungan) ---- */
+function dayKey(t = Date.now()) {
+  const d = new Date(t), p = (x) => String(x).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+function trackVisit() {
+  const st = store.get('am_streak', { last: '', count: 0, visits: 0 });
+  const today = dayKey();
+  if (st.last !== today) {
+    st.count = st.last === dayKey(Date.now() - 864e5) ? st.count + 1 : 1;
+    st.last = today;
+  }
+  try { if (!sessionStorage.getItem('am_sess')) { sessionStorage.setItem('am_sess', '1'); st.visits = (st.visits || 0) + 1; } } catch { st.visits = Math.max(1, st.visits || 0); }
+  st.visits = Math.max(1, st.visits || 0);
+  store.set('am_streak', st);
+  return st;
+}
+function renderMini() {
+  const st = store.get('am_streak', { count: 1, visits: 1 });
+  animateNum($('#ms-streak'), st.count || 1);
+  animateNum($('#ms-acc'), store.get('am_accounts', []).length);
+  animateNum($('#ms-visit'), st.visits || 1);
+}
+
+/* ---- Welcome / input nama ---- */
+const welcome = {
+  el: $('#welcome'), form: $('#w-form'), input: $('#w-name'), card: $('#w-card'), hello: $('#w-hello'),
+  edit: false, busy: false,
+  async open(edit = false) {
+    this.edit = edit; this.busy = false;
+    const cur = userName();
+    this.el.classList.remove('leaving');
+    this.el.classList.add('open');
+    this.card.classList.remove('out', 'shake');
+    this.card.classList.remove('hidden'); this.hello.classList.add('hidden');
+    document.body.classList.add('no-scroll');
+    this.input.value = edit ? cur : '';
+    $('#w-cancel').classList.toggle('hidden', !edit);
+    $('#w-go span').textContent = edit ? 'Simpan Nama' : 'Mulai Sekarang';
+    $('#w-sub').textContent = edit
+      ? 'Mau dipanggil apa sekarang? Perubahan langsung terlihat di dashboard.'
+      : 'Kenalan dulu yuk. Namamu dipakai untuk menyapa di dashboard dan hanya tersimpan di perangkat ini.';
+    this.sync();
+    typing.type($('#w-type'), edit ? 'Mau dipanggil apa?' : 'Halo! Siapa namamu?', 42).then((done) => {
+      if (done && !this.busy) this.input.focus({ preventScroll: true });
+    });
+    if (REDUCED) this.input.focus({ preventScroll: true });
+  },
+  sync() {
+    const v = cleanName(this.input.value);
+    $('#w-count').textContent = `${this.input.value.length}/20`;
+    $('#w-prev-name').textContent = v || '...';
+  },
+  fail(msg) {
+    $('#w-err').textContent = msg;
+    $('#w-field').classList.add('err');
+    this.card.classList.remove('shake'); void this.card.offsetWidth; this.card.classList.add('shake');
+    this.input.focus();
+  },
+  async submit() {
+    if (this.busy) return;
+    const name = cleanName(this.input.value);
+    const err = validateName(name);
+    if (err) return this.fail(err);
+    this.busy = true;
+    store.set('am_user', name);
+    applyUser(); renderMini();
+    typing.token++;
+    this.card.classList.add('out');
+    await sleep(380);
+    this.card.classList.add('hidden');
+    const nm = $('#wh-name');
+    nm.innerHTML = '';
+    [...name].forEach((ch, i) => {
+      const sp = document.createElement('span');
+      sp.style.setProperty('--i', i);
+      sp.textContent = ch === ' ' ? '\u00a0' : ch;
+      nm.appendChild(sp);
+    });
+    $('.wh-s', this.hello).textContent = this.edit ? 'Nama diperbarui...' : 'Menyiapkan dashboardmu...';
+    this.hello.classList.remove('hidden');
+    FX.confetti();
+    await sleep(this.edit ? 1500 : 2200);
+    this.el.classList.add('leaving');
+    await sleep(820);
+    this.el.classList.remove('open', 'leaving');
+    document.documentElement.classList.remove('needs-name');
+    document.body.classList.remove('no-scroll');
+    this.busy = false;
+    toast(`${greetWord()}, ${name}!`);
+    if (!this.edit) { showWarnIfNeeded(); }
+  },
+  init() {
+    this.input.addEventListener('input', () => { this.sync(); $('#w-err').textContent = ''; $('#w-field').classList.remove('err'); });
+    this.form.addEventListener('submit', (e) => { e.preventDefault(); this.submit(); });
+    $('#w-cancel').addEventListener('click', () => {
+      if (this.busy) return;
+      typing.token++;
+      this.el.classList.remove('open');
+      document.body.classList.remove('no-scroll');
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.edit && this.el.classList.contains('open') && !this.busy) $('#w-cancel').click();
+    });
+    $('#profile-btn').addEventListener('click', () => this.open(true));
+    $('#rename-btn').addEventListener('click', () => { menu.close(); setTimeout(() => this.open(true), 240); });
+  }
+};
+welcome.init();
+
 /* Init */
-$$('[data-user]').forEach((el) => (el.textContent = CONFIG.user));
+trackVisit();
+applyUser();
 renderHome();
+renderMini();
 show(VIEW_BY_PATH[location.pathname] || 'home', false);
 if (location.pathname === '/') history.replaceState(null, '', '/index');
+heroTyper();
+if (userName()) {
+  document.documentElement.classList.remove('needs-name');
+  showWarnIfNeeded();
+} else {
+  document.documentElement.classList.add('needs-name');
+  welcome.open(false);
+}
