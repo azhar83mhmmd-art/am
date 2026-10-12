@@ -694,11 +694,18 @@ const FX = {
     for (const p of this.parts) {
       p.vx *= p.drag; p.vy = p.vy * p.drag + p.g * dt;
       p.x += p.vx * dt; p.y += p.vy * dt; p.r += p.vr * dt; p.life -= p.decay * dt;
+      if (p.grow) p.s += p.grow * dt;
       c.save();
-      c.globalAlpha = Math.max(0, Math.min(1, p.life * 2));
+      c.globalAlpha = Math.max(0, Math.min(1, p.shape === 'ring' ? p.life : p.life * 2)) * (p.a || 1);
       c.translate(p.x, p.y); c.rotate(p.r);
       c.fillStyle = p.c; c.strokeStyle = '#0d0d0d'; c.lineWidth = 2;
-      if (p.shape === 'c') { c.beginPath(); c.arc(0, 0, p.s / 2, 0, 7); c.fill(); c.stroke(); }
+      if (p.shape === 'o') {
+        const R = Math.max(0, (p.s / 2) * (p.life < .3 ? p.life / .3 : 1));
+        c.beginPath(); c.arc(0, 0, R, 0, 7); c.fillStyle = p.c; c.fill(); c.lineWidth = 1.5; c.strokeStyle = 'rgba(13,13,13,.55)'; c.stroke();
+        c.beginPath(); c.arc(-R * .32, -R * .34, R * .26, 0, 7); c.fillStyle = 'rgba(255,255,255,.7)'; c.fill();
+      } else if (p.shape === 'ring') {
+        c.beginPath(); c.arc(0, 0, Math.max(0, p.s / 2), 0, 7); c.lineWidth = Math.max(1, p.lw * Math.max(0, p.life)); c.strokeStyle = p.c; c.stroke();
+      } else if (p.shape === 'c') { c.beginPath(); c.arc(0, 0, p.s / 2, 0, 7); c.fill(); c.stroke(); }
       else { c.fillRect(-p.s / 2, -p.s / 3, p.s, p.s * .66); c.strokeRect(-p.s / 2, -p.s / 3, p.s, p.s * .66); }
       c.restore();
     }
@@ -717,6 +724,50 @@ FX.init();
     if (now - lt < 45 || Math.hypot(e.clientX - lx, e.clientY - ly) < 18) return;
     lt = now; lx = e.clientX; ly = e.clientY;
     FX.spark(e.clientX, e.clientY);
+  }, { passive: true });
+})();
+
+/* Efek gelembung warna-warni: klik/ketuk = gelombang + letupan lingkaran, geser/swipe = jejak pelangi */
+const BUBBLE_COLORS = ['#ffe08a', '#ffb3c6', '#a8d8fb', '#a6f0bd', '#ffc999', '#d6c4ff'];
+Object.assign(FX, {
+  pop(x, y) {
+    const pick = () => BUBBLE_COLORS[(Math.random() * BUBBLE_COLORS.length) | 0];
+    this.add({ shape: 'ring', x, y, vx: 0, vy: 0, g: 0, drag: 1, s: 8, grow: 1.7, lw: 3, a: .6, c: pick(), r: 0, vr: 0, life: 1, decay: .03 });
+    const n = innerWidth < 500 ? 5 : 7;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + Math.random() * .8, v = 1 + Math.random() * 2.2;
+      this.add({ shape: 'o', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, g: -.006, drag: .95, a: .85, s: 6 + Math.random() * 8, r: 0, vr: 0, c: pick(), life: 1, decay: .011 + Math.random() * .006 });
+    }
+  },
+  trail(x, y, hue) {
+    this.add({ shape: 'o', x: x + (Math.random() - .5) * 8, y: y + (Math.random() - .5) * 8, vx: (Math.random() - .5) * .8, vy: (Math.random() - .5) * .8 - .3, g: -.01, drag: .975, a: .8,
+      s: 5 + Math.random() * 6, r: 0, vr: 0, c: `hsl(${hue % 360} 85% 70%)`, life: 1, decay: .014 + Math.random() * .006 });
+  }
+});
+(function bubbleFx() {
+  const skip = (t) => t && t.closest && t.closest('input, textarea, select, [contenteditable]');
+  let lx = 0, ly = 0, hue = Math.random() * 360;
+  const move = (x, y) => {
+    if (Math.hypot(x - lx, y - ly) < 24) return;
+    lx = x; ly = y; hue = (hue + 14) % 360;
+    FX.trail(x, y, hue);
+  };
+  addEventListener('pointerdown', (e) => {
+    lx = e.clientX; ly = e.clientY;
+    if (!FX.enabled || skip(e.target) || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    FX.pop(e.clientX, e.clientY);
+  }, { passive: true });
+  // mouse/pen: geser sambil menahan klik
+  addEventListener('pointermove', (e) => {
+    if (e.pointerType === 'touch' || !e.buttons || !FX.enabled || skip(e.target)) return;
+    move(e.clientX, e.clientY);
+  }, { passive: true });
+  // layar sentuh: swipe/scroll (touchmove tetap terkirim saat halaman digulir)
+  addEventListener('touchstart', (e) => { const t = e.touches[0]; if (t) { lx = t.clientX; ly = t.clientY; } }, { passive: true });
+  addEventListener('touchmove', (e) => {
+    if (!FX.enabled) return;
+    const t = e.touches[0];
+    if (t) move(t.clientX, t.clientY);
   }, { passive: true });
 })();
 
@@ -1002,7 +1053,7 @@ const cmd = {
       { g: 'AKSI', t: 'Bagikan website', d: 'Kirim link AM Premify ke orang lain', i: 'share', k: 'bagikan share salin link', run: shareSite },
       { g: 'AKSI', t: 'Dukung developer', d: 'Donasi via Sociabuzz', i: 'heart', k: 'dukung donasi sociabuzz support', run: ext('https://sociabuzz.com/kenzchillz/tribe') },
       { g: 'PENGATURAN', t: 'Ganti nama', d: 'Ubah sapaan di dashboard', i: 'edit', k: 'nama panggilan ganti rename profil', run: () => setTimeout(() => welcome.open(true), 120) },
-      { g: 'PENGATURAN', t: 'Efek partikel: nyala / mati', d: 'Konfeti & jejak kursor', i: 'sparkle', k: 'efek partikel konfeti animasi fx', run: () => { const c = $('#fx-toggle'); c.checked = !c.checked; c.dispatchEvent(new Event('change')); } },
+      { g: 'PENGATURAN', t: 'Efek partikel: nyala / mati', d: 'Konfeti, gelembung & jejak kursor', i: 'sparkle', k: 'efek partikel konfeti animasi fx', run: () => { const c = $('#fx-toggle'); c.checked = !c.checked; c.dispatchEvent(new Event('change')); } },
       { g: 'PENGATURAN', t: 'Ke atas', d: 'Gulir kembali ke paling atas', i: 'up', k: 'atas top scroll', run: () => scrollTo({ top: 0, behavior: 'smooth' }) }
     ];
     const names = { yellow: 'Kuning', mint: 'Mint', blue: 'Biru', pink: 'Pink', purple: 'Ungu', orange: 'Oranye' };
