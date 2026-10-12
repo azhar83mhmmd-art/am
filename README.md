@@ -16,3 +16,4 @@ Baru di v4.1 (tampilan modern & responsif):
 - Kartu VIP animasi di hero (desktop), layout melebar di layar besar
 - FAQ accordion di halaman Panduan, tombol Bagikan Website (Web Share / salin link)
 - Menu bawah bisa di-scroll di layar pendek, fokus keyboard lebih jelas, animasi menghormati "kurangi gerakan"
+- Efek gelembung warna-warni: klik/ketuk memunculkan satu gelombang tipis + beberapa gelembung kecil pastel, geser/swipe meninggalkan jejak lembut (ikut toggle Efek Partikel)
