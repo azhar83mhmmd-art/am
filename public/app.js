@@ -29,16 +29,17 @@ const VIEW_BY_PATH = { '/': 'home', '/index': 'home', '/premium': 'premium', '/p
 
 function show(view, push = true) {
   $$('.view').forEach((v) => v.classList.toggle('hidden', v.dataset.view !== view));
-  $$('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === view));
+  $$('.tab, .dock-i[data-tab]').forEach((t) => t.classList.toggle('active', t.dataset.tab === view));
   document.body.classList.toggle('bio-mode', view === 'bio');
   document.title = `AM Premify - ${TITLES[view]}`;
   if (push && location.pathname !== ROUTES[view]) history.pushState({ view }, '', ROUTES[view]);
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (view === 'home') renderHome();
 }
-$$('.tab').forEach((t) => t.addEventListener('click', (e) => {
+$$('.tab, .dock-i[data-tab]').forEach((t) => t.addEventListener('click', (e) => {
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return; // buka di tab baru tetap normal
   e.preventDefault();
+  if (navigator.vibrate && t.classList.contains('dock-i')) navigator.vibrate(8);
   show(t.dataset.tab);
 }));
 $$('[data-goto]').forEach((b) => b.addEventListener('click', () => show(b.dataset.goto)));
@@ -57,6 +58,7 @@ const menu = {
   }
 };
 $('#menu-open').addEventListener('click', () => menu.open());
+$('#dock-menu').addEventListener('click', () => { if (navigator.vibrate) navigator.vibrate(8); menu.open(); });
 $$('[data-close]', menu.el).forEach((el) => el.addEventListener('click', () => menu.close()));
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') menu.close(); });
 $$('[data-goto-link]').forEach((a) => a.addEventListener('click', (e) => {
@@ -306,6 +308,7 @@ $('#warn-ok').addEventListener('click', () => {
   store.set('am_warn_ok', Date.now());
   $('#warn-modal').classList.add('hidden');
   if (typeof FX !== 'undefined') FX.burstAt(innerWidth / 2, innerHeight / 2, 40);
+  channelPop.request(500);
 });
 
 /* Statistik real-time (Supabase) */
@@ -905,7 +908,7 @@ const welcome = {
     document.body.classList.remove('no-scroll');
     this.busy = false;
     toast(`${greetWord()}, ${name}!`);
-    if (!this.edit) { showWarnIfNeeded(); }
+    if (!this.edit) { showWarnIfNeeded(); channelPop.request(700); }
   },
   init() {
     this.input.addEventListener('input', () => { this.sync(); $('#w-err').textContent = ''; $('#w-field').classList.remove('err'); });
@@ -925,6 +928,161 @@ const welcome = {
 };
 welcome.init();
 
+/* ---- Popup saluran WhatsApp (muncul setiap awal masuk) ---- */
+const channelPop = {
+  el: $('#ch-pop'), shown: false, timer: 0,
+  blocked() {
+    return $('#welcome').classList.contains('open') || !$('#warn-modal').classList.contains('hidden') || !$('#sheet').classList.contains('hidden');
+  },
+  request(delay = 700) {
+    if (this.shown) return;
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => {
+      if (this.shown) return;
+      if (this.blocked()) return this.request(900);
+      this.open();
+    }, delay);
+  },
+  open() {
+    this.shown = true;
+    this.el.classList.remove('hidden', 'out');
+    document.body.classList.add('no-scroll');
+    if (typeof FX !== 'undefined') FX.burstAt(innerWidth / 2, innerHeight * .32, 28, Math.PI * 2, 0, 8);
+    $('#ch-go').focus({ preventScroll: true });
+  },
+  close() {
+    if (this.el.classList.contains('hidden') || this.el.classList.contains('out')) return;
+    this.el.classList.add('out');
+    setTimeout(() => {
+      this.el.classList.add('hidden'); this.el.classList.remove('out');
+      document.body.classList.remove('no-scroll');
+    }, REDUCED ? 0 : 280);
+  },
+  init() {
+    $$('[data-ch-close]', this.el).forEach((b) => b.addEventListener('click', () => this.close()));
+    $('#ch-go').addEventListener('click', () => {
+      if (typeof FX !== 'undefined') FX.burstAt(innerWidth / 2, innerHeight * .7, 50);
+      toast('Terima kasih sudah mengikuti!', 'ok');
+      setTimeout(() => this.close(), 350);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !this.el.classList.contains('hidden')) this.close();
+    });
+  }
+};
+channelPop.init();
+
+/* ---- v4.1: bagikan, perintah cepat (Ctrl/Cmd+K), FAQ ---- */
+const SITE = { title: 'AM Premify - Premium Panel', text: 'Panel aktivasi VIP Alight Motion, otomatis dan real-time.' };
+async function shareSite() {
+  const url = location.origin + '/index';
+  if (navigator.share) {
+    try { await navigator.share({ title: SITE.title, text: SITE.text, url }); return; } catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  try { await navigator.clipboard.writeText(url); toast('Link website disalin'); }
+  catch { toast(url); }
+}
+$('#share-btn').addEventListener('click', () => { menu.close(); setTimeout(shareSite, 240); });
+
+const CHANNEL_URL = 'https://whatsapp.com/channel/0029Vb99yLaK0IBgYkp9KR2q';
+const cmd = {
+  el: $('#cmd'), input: $('#cmd-input'), list: $('#cmd-list'), items: [], shown: [], idx: 0, last: null,
+  build() {
+    const go = (v) => () => show(v);
+    const ext = (u) => () => window.open(u, '_blank', 'noopener');
+    const I = (n) => `<svg class="ic"><use href="#i-${n}"/></svg>`;
+    const list = [
+      { g: 'NAVIGASI', t: 'Dashboard', d: 'Statistik & aktivitas real-time', i: 'grid', k: 'beranda home dashboard', run: go('home') },
+      { g: 'NAVIGASI', t: 'Premiumkan Akun', d: 'Kirim magic link & aktifkan VIP', i: 'crown', k: 'premium vip aktivasi email', run: go('premium') },
+      { g: 'NAVIGASI', t: 'Panduan', d: '3 langkah + pertanyaan umum', i: 'book', k: 'panduan bantuan faq cara', run: go('guide') },
+      { g: 'NAVIGASI', t: 'Biodata Developer', d: 'Kenali pembuat website ini', i: 'user', k: 'biodata developer kenz profil', run: go('bio') },
+      { g: 'AKSI', t: 'Tempel link dari clipboard', d: 'Buka halaman Premiumkan lalu tempel', i: 'link', k: 'tempel paste link magic', run: () => { show('premium'); setTimeout(() => $('#paste-btn').click(), 350); } },
+      { g: 'AKSI', t: 'Chat WhatsApp admin', d: 'Pesan otomatis langsung terisi', i: 'wa', k: 'whatsapp wa hubungi admin bantuan chat', run: () => window.open(waLink(), '_blank', 'noopener') },
+      { g: 'AKSI', t: 'Ikuti saluran kenzchillz', d: 'Update & info terbaru di WhatsApp', i: 'wa', k: 'saluran channel kenzchillz ikuti whatsapp', run: ext(CHANNEL_URL) },
+      { g: 'AKSI', t: 'Bagikan website', d: 'Kirim link AM Premify ke orang lain', i: 'share', k: 'bagikan share salin link', run: shareSite },
+      { g: 'AKSI', t: 'Dukung developer', d: 'Donasi via Sociabuzz', i: 'heart', k: 'dukung donasi sociabuzz support', run: ext('https://sociabuzz.com/kenzchillz/tribe') },
+      { g: 'PENGATURAN', t: 'Ganti nama', d: 'Ubah sapaan di dashboard', i: 'edit', k: 'nama panggilan ganti rename profil', run: () => setTimeout(() => welcome.open(true), 120) },
+      { g: 'PENGATURAN', t: 'Efek partikel: nyala / mati', d: 'Konfeti & jejak kursor', i: 'sparkle', k: 'efek partikel konfeti animasi fx', run: () => { const c = $('#fx-toggle'); c.checked = !c.checked; c.dispatchEvent(new Event('change')); } },
+      { g: 'PENGATURAN', t: 'Ke atas', d: 'Gulir kembali ke paling atas', i: 'up', k: 'atas top scroll', run: () => scrollTo({ top: 0, behavior: 'smooth' }) }
+    ];
+    const names = { yellow: 'Kuning', mint: 'Mint', blue: 'Biru', pink: 'Pink', purple: 'Ungu', orange: 'Oranye' };
+    Object.keys(ACCENT_HEX).forEach((a) => list.push({
+      g: 'TEMA WARNA', t: `Tema ${names[a]}`, d: 'Ganti warna aksen website', sw: ACCENT_HEX[a], k: `tema warna aksen theme ${a} ${names[a]}`.toLowerCase(),
+      run: () => { applyAccent(a); toast(`Tema ${names[a]} aktif`); }
+    }));
+    list.forEach((c) => { c.icon = c.sw ? `<span class="sw-dot" style="--c:${c.sw}"></span>` : I(c.i); });
+    this.items = list;
+  },
+  render() {
+    const q = this.input.value.trim().toLowerCase();
+    this.shown = !q ? this.items.filter((c) => c.g !== 'TEMA WARNA')
+      : this.items.filter((c) => (c.t + ' ' + c.d + ' ' + c.k).toLowerCase().includes(q));
+    if (this.idx >= this.shown.length) this.idx = Math.max(0, this.shown.length - 1);
+    if (!this.shown.length) { this.list.innerHTML = '<div class="cmd-empty">Tidak ada perintah yang cocok. Coba kata lain.</div>'; return; }
+    let html = '', g = '';
+    this.shown.forEach((c, i) => {
+      if (c.g !== g) { g = c.g; html += `<div class="cmd-g">${g}</div>`; }
+      html += `<button type="button" class="cmd-it${i === this.idx ? ' on' : ''}" role="option" data-i="${i}" aria-selected="${i === this.idx}"><span class="ci">${c.icon}</span><span><b>${esc(c.t)}</b><small>${esc(c.d)}</small></span></button>`;
+    });
+    this.list.innerHTML = html;
+    const on = $('.cmd-it.on', this.list);
+    if (on) on.scrollIntoView({ block: 'nearest' });
+  },
+  open() {
+    if (!this.el.classList.contains('hidden') || $('#welcome').classList.contains('open')) return;
+    if (!this.items.length) this.build();
+    this.last = document.activeElement;
+    menu.close();
+    this.idx = 0; this.input.value = '';
+    this.render();
+    this.el.classList.remove('hidden', 'out');
+    document.body.classList.add('no-scroll');
+    setTimeout(() => this.input.focus({ preventScroll: true }), 30);
+  },
+  close() {
+    if (this.el.classList.contains('hidden') || this.el.classList.contains('out')) return;
+    this.el.classList.add('out');
+    setTimeout(() => {
+      this.el.classList.add('hidden'); this.el.classList.remove('out');
+      if (!channelPop.el.classList.contains('hidden') || !$('#sheet').classList.contains('hidden')) return;
+      document.body.classList.remove('no-scroll');
+    }, REDUCED ? 0 : 160);
+  },
+  run(i) {
+    const c = this.shown[i];
+    if (!c) return;
+    this.close();
+    setTimeout(() => c.run(), 180);
+  },
+  init() {
+    $('#cmd-open').addEventListener('click', () => this.open());
+    $('#sheet-cmd').addEventListener('click', () => { menu.close(); setTimeout(() => this.open(), 260); });
+    $$('[data-cmd-close]', this.el).forEach((b) => b.addEventListener('click', () => this.close()));
+    this.input.addEventListener('input', () => { this.idx = 0; this.render(); });
+    this.list.addEventListener('click', (e) => { const b = e.target.closest('.cmd-it'); if (b) this.run(+b.dataset.i); });
+    this.list.addEventListener('mousemove', (e) => {
+      const b = e.target.closest('.cmd-it');
+      if (b && +b.dataset.i !== this.idx) { this.idx = +b.dataset.i; $$('.cmd-it', this.list).forEach((x) => { const on = +x.dataset.i === this.idx; x.classList.toggle('on', on); x.setAttribute('aria-selected', String(on)); }); }
+    });
+    document.addEventListener('keydown', (e) => {
+      const isOpen = !this.el.classList.contains('hidden');
+      const typing = /^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName || '') || (document.activeElement || {}).isContentEditable;
+      if ((e.key === 'k' || e.key === 'K') && (e.ctrlKey || e.metaKey)) { e.preventDefault(); isOpen ? this.close() : this.open(); return; }
+      if (!isOpen) { if (e.key === '/' && !typing && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); this.open(); } return; }
+      if (e.key === 'Escape') { e.preventDefault(); this.close(); }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); this.idx = Math.min(this.shown.length - 1, this.idx + 1); this.render(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); this.idx = Math.max(0, this.idx - 1); this.render(); }
+      else if (e.key === 'Enter') { e.preventDefault(); this.run(this.idx); }
+    });
+  }
+};
+cmd.init();
+
+/* FAQ: native <details name="faq"> sudah accordion; fallback untuk browser lama */
+$$('#faq details').forEach((d) => d.addEventListener('toggle', () => {
+  if (d.open) $$('#faq details').forEach((o) => { if (o !== d) o.open = false; });
+}));
+
 /* Init */
 trackVisit();
 applyUser();
@@ -936,6 +1094,7 @@ heroTyper();
 if (userName()) {
   document.documentElement.classList.remove('needs-name');
   showWarnIfNeeded();
+  channelPop.request(900);
 } else {
   document.documentElement.classList.add('needs-name');
   welcome.open(false);
