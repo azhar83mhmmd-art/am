@@ -26,3 +26,9 @@ Baru di v4.3 (chat, menu admin, blokir perangkat):
 - Popup konfirmasi profesional menggantikan confirm() bawaan browser (hapus ulasan, hapus riwayat)
 - WAJIB: jalankan ulang supabase.sql (bagian v4.3), isi ADMIN_PASSWORD dan APP_SECRET di .env, restart server
 - Catatan jujur: tidak ada sistem web yang bisa mengenali perangkat 100%. Pelaku yang berganti HP/browser sekaligus jaringan, atau memakai alat otomatis dengan header palsu, bisa lolos; Turnstile + batas laju membantu menekan itu
+
+v4.4 - Nama "kenz" = developer terverifikasi (centang biru), hanya 1 perangkat:
+- Cara memakai: login dulu di /admin (kata sandi admin) pada perangkatmu, lalu isi nama "kenz" di layar sambutan. Perangkat itu jadi developer permanen (tidak perlu login admin lagi)
+- Orang lain yang mengetik kenz (K3nz, k e n z, kenz.dev, dll) ditolak server; nama kenz yang tersimpan di perangkat lain otomatis dilepas
+- Database menolak ulasan bernama kenz dari identitas selain developer (trigger SQL). Jalankan ulang supabase.sql (bagian v4.4)
+- Memindahkan ke HP lain: login /admin di HP baru lalu isi nama kenz, HP lama otomatis kehilangan status developer
