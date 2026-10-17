@@ -7,7 +7,7 @@
   'use strict';
 
   const LS_KEY = 'am_did';
-  const state = { token: '', fp: '', hw: '', blocked: false, reason: '', unread: 0, configured: true };
+  const state = { token: '', fp: '', hw: '', blocked: false, reason: '', unread: 0, configured: true, dev: false };
 
   /* ---------- penyimpanan cadangan ---------- */
   const idbOpen = () => new Promise((res) => {
@@ -129,6 +129,26 @@
     window.dispatchEvent(new CustomEvent('am:blocked', { detail: { blocked, reason } }));
   }
 
+  function setDev(v) {
+    v = !!v;
+    if (v === state.dev) return;
+    state.dev = v;
+    document.documentElement.classList.toggle('is-dev', v);
+    window.dispatchEvent(new CustomEvent('am:dev', { detail: { dev: v } }));
+  }
+
+  // Cek nama ke server. Nama "kenz" (developer) hanya lolos untuk perangkat developer; selain itu ditolak.
+  async function checkName(name) {
+    try {
+      const r = await api('/api/name', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+      const d = await r.json().catch(() => ({}));
+      if (r.status === 409) return { ok: false, error: d.error || 'Nama ini tidak bisa dipakai.' };
+      if (r.ok) { if (d.dev) setDev(true); return { ok: true, dev: !!d.dev }; }
+      if (r.status === 429) return { ok: false, error: d.error || 'Terlalu banyak percobaan.' };
+      return { ok: true }; // server bermasalah: jangan halangi pengguna biasa (nama dicadangkan tetap dicek ulang di server saat sinkron)
+    } catch { return { ok: true }; }
+  }
+
   let syncing = null;
   async function sync(name) {
     if (syncing) { await syncing; }
@@ -139,6 +159,7 @@
         if (!r.ok) return null;
         state.configured = d.configured !== false;
         state.unread = d.unread || 0;
+        setDev(d.dev);
         setBlocked(d.blocked, d.reason);
         window.dispatchEvent(new CustomEvent('am:device', { detail: d }));
         return d;
@@ -147,5 +168,5 @@
     return syncing;
   }
 
-  window.Device = { state, api, sync, setBlocked, ready: state.ready };
+  window.Device = { state, api, sync, setBlocked, checkName, ready: state.ready };
 })();
