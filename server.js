@@ -4,6 +4,7 @@ const http = require('http');
 const net = require('net');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 // Muat file .env (tanpa dotenv)
 try {
@@ -22,6 +23,20 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || '';
 // Email di feed publik disamarkan: 5 huruf pertama terlihat, sisanya ***, domain utuh (kenzo***@gmail.com).
 // Set MASK_EMAIL=false di .env hanya jika ingin menampilkan email penuh.
 const MASK_EMAIL = String(process.env.MASK_EMAIL || 'true').toLowerCase() !== 'false';
+// ---- v4.3: admin, chat & blokir perangkat ----
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
+const SB_READY = !!(SUPABASE_URL && SUPABASE_SERVICE_KEY);
+const sha = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
+// Rahasia penanda tangan token. Isi APP_SECRET di .env (acak, panjang). Jika kosong diturunkan dari kunci lain.
+const APP_SECRET = process.env.APP_SECRET ||
+  ((SUPABASE_SERVICE_KEY || ADMIN_PASSWORD) ? sha('amp|' + SUPABASE_SERVICE_KEY + '|' + ADMIN_PASSWORD) : crypto.randomBytes(32).toString('hex'));
+// Blokir ketat: sidik jari perangkat yang sama tetap diblokir walau data browser dihapus & jaringan berganti.
+// Set BLOCK_FP_STRICT=false jika khawatir HP dengan tipe yang sama ikut terblokir (sidik jari + IP tetap dicocokkan).
+const BLOCK_FP_STRICT = String(process.env.BLOCK_FP_STRICT || 'true').toLowerCase() !== 'false';
+// Opsional: blokir juga berdasarkan IP saja (bisa mengenai satu jaringan yang sama). Default mati.
+const BLOCK_IP = String(process.env.BLOCK_IP || 'false').toLowerCase() === 'true';
+// Batas permintaan aktivasi (kirim link + verifikasi) per perangkat / per IP dalam 10 menit
+const ACT_LIMIT = Number(process.env.ACT_LIMIT || 20);
 const TURNSTILE_SITE_KEY = process.env.TURNSTILE_SITE_KEY || '1x00000000000000000000AA';
 const TURNSTILE_SECRET_KEY = process.env.TURNSTILE_SECRET_KEY || '1x0000000000000000000000000000000AA';
 
@@ -33,6 +48,7 @@ const BLOCKED = ['server.js', 'package.json', 'package-lock.json', 'vercel.json'
 
 // URL bersih (tanpa .html) -> semuanya dilayani oleh index.html
 const PAGES = new Set(['/', '/index', '/premium', '/panduan', '/rating', '/ulasan', '/bukti', '/biodata']);
+const ADMIN_PAGE = '/admin';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -45,7 +61,11 @@ const MIME = {
 };
 
 function sendJson(res, status, obj) {
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff'
+  });
   res.end(JSON.stringify(obj));
 }
 
@@ -54,12 +74,246 @@ function redirect(res, code, location) {
   res.end();
 }
 
-function readBody(req) {
+// Batasi ukuran body supaya tidak bisa dipakai membanjiri memori server
+function readBody(req, max = 64 * 1024) {
   return new Promise((resolve) => {
     const chunks = [];
-    req.on('data', (c) => chunks.push(c));
-    req.on('end', () => resolve(Buffer.concat(chunks)));
+    let size = 0, dead = false;
+    req.on('data', (c) => {
+      if (dead) return;
+      size += c.length;
+      if (size > max) { dead = true; chunks.length = 0; return; }
+      chunks.push(c);
+    });
+    req.on('end', () => resolve(dead ? null : Buffer.concat(chunks)));
+    req.on('error', () => resolve(null));
   });
+}
+
+async function readJson(req, max = 16 * 1024) {
+  const buf = await readBody(req, max);
+  if (!buf) return null;
+  try {
+    const o = JSON.parse(buf.toString('utf8') || '{}');
+    return o && typeof o === 'object' && !Array.isArray(o) ? o : {};
+  } catch { return {}; }
+}
+
+/* ---------- v4.3: token, cookie, identitas perangkat ---------- */
+const hmac = (data) => crypto.createHmac('sha256', APP_SECRET).update(data).digest('base64url');
+function safeEq(a, b) {
+  const x = Buffer.from(String(a)), y = Buffer.from(String(b));
+  return x.length === y.length && crypto.timingSafeEqual(x, y);
+}
+function sign(obj) {
+  const p = Buffer.from(JSON.stringify(obj)).toString('base64url');
+  return p + '.' + hmac(p);
+}
+function unsign(tok) {
+  if (typeof tok !== 'string' || tok.length > 600) return null;
+  const i = tok.lastIndexOf('.');
+  if (i < 1 || !safeEq(tok.slice(i + 1), hmac(tok.slice(0, i)))) return null;
+  try { return JSON.parse(Buffer.from(tok.slice(0, i), 'base64url').toString('utf8')); } catch { return null; }
+}
+const deviceToken = (id) => id + '.' + hmac('d:' + id).slice(0, 32);
+function verifyDeviceToken(tok) {
+  if (typeof tok !== 'string' || tok.length > 80) return '';
+  const [id, mac] = tok.split('.');
+  return /^[0-9a-f]{32}$/.test(id || '') && mac && safeEq(mac, hmac('d:' + id).slice(0, 32)) ? id : '';
+}
+
+function parseCookies(req) {
+  const out = {};
+  String(req.headers.cookie || '').split(';').forEach((p) => {
+    const i = p.indexOf('=');
+    if (i < 1) return;
+    try { out[p.slice(0, i).trim()] = decodeURIComponent(p.slice(i + 1).trim()); } catch {}
+  });
+  return out;
+}
+function isHttps(req) {
+  return String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https' || !!req.socket.encrypted;
+}
+function cookieStr(req, name, value, maxAge, sameSite) {
+  return `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=${sameSite}` + (isHttps(req) ? '; Secure' : '');
+}
+
+// Permintaan POST dari situs lain ditolak (perlindungan CSRF)
+function sameOrigin(req) {
+  const o = req.headers.origin;
+  if (!o) return true;
+  try { return new URL(o).host === String(req.headers.host || ''); } catch { return false; }
+}
+
+const SIG_RE = /^[0-9a-f]{8,64}$/;
+const ipKey = (ip) => (net.isIPv6(ip) ? ip.split(':').slice(0, 4).join(':') : ip);
+
+// Identitas perangkat dari: cookie bertanda tangan (HttpOnly) -> header cadangan (localStorage/IndexedDB) -> baru.
+// Ditambah sinyal sidik jari (fp, hw) dan jaringan (IP) yang dipakai untuk mengenali perangkat yang sama
+// walau pengguna keluar akun, ganti nama, atau menghapus data browser.
+function identify(req) {
+  const ck = parseCookies(req);
+  let id = verifyDeviceToken(ck.amp_did) || verifyDeviceToken(req.headers['x-device']);
+  const fresh = !id;
+  if (!id) id = crypto.randomBytes(16).toString('hex');
+  const pick = (v) => { const s = String(v || '').trim().toLowerCase(); return SIG_RE.test(s) ? s : ''; };
+  const fp = pick(req.headers['x-fp']);
+  const hw = pick(req.headers['x-hw']);
+  const ip = clientIp(req);
+  return {
+    id, fresh, fp, hw, ip,
+    ua: String(req.headers['user-agent'] || '').slice(0, 300),
+    h: fp || hw ? sha(`${fp}|${hw}|${ipKey(ip)}`).slice(0, 32) : '',
+    i: ip ? sha('ip|' + ipKey(ip)).slice(0, 32) : '',
+    token: deviceToken(id)
+  };
+}
+function setIdentHeaders(req, res, ident) {
+  res.setHeader('Set-Cookie', cookieStr(req, 'amp_did', ident.token, 63072000, 'Lax'));
+  res.setHeader('X-Device-Token', ident.token);
+}
+
+// Pembatas laju sederhana (di memori)
+const buckets = new Map();
+function rl(key, max, windowMs) {
+  const now = Date.now();
+  const list = (buckets.get(key) || []).filter((t) => now - t < windowMs);
+  list.push(now);
+  buckets.set(key, list);
+  if (buckets.size > 20000) buckets.clear();
+  return list.length > max;
+}
+
+const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/* ---------- v4.3: akses Supabase (service role, hanya dari server) ---------- */
+async function sb(method, pathq, body, extra) {
+  const r = await fetch(SUPABASE_URL + pathq, {
+    method,
+    headers: Object.assign({
+      apikey: SUPABASE_SERVICE_KEY,
+      Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+      'Content-Type': 'application/json'
+    }, extra || {}),
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(10000)
+  });
+  const text = await r.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+  if (!r.ok) console.warn(`[AM Premify] Supabase ${method} ${pathq.split('?')[0]} -> ${r.status}`, typeof data === 'string' ? data : JSON.stringify(data));
+  return { ok: r.ok, status: r.status, data, headers: r.headers };
+}
+const rest = (p) => '/rest/v1/' + p;
+const MIN = { Prefer: 'return=minimal' };
+
+async function sbCount(table, filter) {
+  const r = await sb('GET', rest(`${table}?${filter ? filter + '&' : ''}select=id&limit=1`), undefined, { Prefer: 'count=exact' });
+  const m = /\/(\d+)$/.exec(r.headers.get('content-range') || '');
+  return r.ok && m ? Number(m[1]) : 0;
+}
+
+const PROXY_BLOCKED_HINT = 'Hubungi admin lewat Chat jika ini keliru.';
+function blockedText(reason) {
+  return 'Fitur premium dinonaktifkan oleh admin untuk perangkat ini.' + (reason ? ' Alasan: ' + reason + '.' : '') + ' ' + PROXY_BLOCKED_HINT;
+}
+
+function cleanName(v) {
+  return String(v || '').replace(/[<>&"`\\\/{}\[\]|^~$%]/g, '').replace(/\s+/g, ' ').trim().slice(0, 20);
+}
+const goodName = (n) => n.length >= 2 && /[\p{L}\p{N}]/u.test(n);
+
+async function getDevice(id) {
+  const r = await sb('GET', rest(`am_devices?id=eq.${id}&select=*`));
+  return r.ok && Array.isArray(r.data) ? r.data[0] || null : null;
+}
+
+// Catat / perbarui perangkat. Nama baru ikut disimpan ke riwayat nama.
+async function touchDevice(ident, nameRaw) {
+  const nm = cleanName(nameRaw);
+  const named = goodName(nm);
+  let dev = await getDevice(ident.id);
+  if (!dev) {
+    const row = { id: ident.id, fp: ident.fp || null, hw: ident.hw || null, hwip: ident.h || null, ip: ident.ip || null, ua: ident.ua || null };
+    if (named) { row.name = nm; row.names = [nm]; }
+    const r = await sb('POST', rest('am_devices'), row, { Prefer: 'return=representation,resolution=ignore-duplicates' });
+    if (r.ok && Array.isArray(r.data) && r.data[0]) return r.data[0];
+    return getDevice(ident.id);
+  }
+  const patch = {};
+  if (ident.fp && ident.fp !== dev.fp) patch.fp = ident.fp;
+  if (ident.hw && ident.hw !== dev.hw) patch.hw = ident.hw;
+  if (ident.h && ident.h !== dev.hwip) patch.hwip = ident.h;
+  if (ident.ip && ident.ip !== dev.ip) patch.ip = ident.ip;
+  if (ident.ua && ident.ua !== dev.ua) patch.ua = ident.ua;
+  if (named && nm !== dev.name) {
+    patch.name = nm;
+    patch.names = [nm].concat((dev.names || []).filter((x) => x !== nm)).slice(0, 10);
+  }
+  const stale = Date.now() - Date.parse(dev.last_seen) > 60000;
+  if (Object.keys(patch).length || stale) {
+    patch.last_seen = new Date().toISOString();
+    await sb('PATCH', rest(`am_devices?id=eq.${ident.id}`), patch, MIN);
+    Object.assign(dev, patch);
+  }
+  return dev;
+}
+
+function signalsOf(d) { // d: { id, fp, h, ip } -> baris untuk am_blocks
+  const out = [['d', d.id]];
+  if (d.fp) out.push(['f', d.fp]);
+  if (d.h) out.push(['h', d.h]);
+  if (BLOCK_IP && d.i) out.push(['i', d.i]);
+  return out;
+}
+async function addBlockRows(group, deviceId, d) {
+  const rows = signalsOf(d).map(([kind, value]) => ({ kind, value, group_id: group, device_id: deviceId }));
+  await sb('POST', rest('am_blocks?on_conflict=kind,value,group_id'), rows, { Prefer: 'resolution=ignore-duplicates,return=minimal' });
+}
+
+async function findBlockHit(ident) {
+  const c = [];
+  if (ident.h) c.push(`and(kind.eq.h,value.eq.${ident.h})`);
+  if (BLOCK_FP_STRICT && ident.fp) c.push(`and(kind.eq.f,value.eq.${ident.fp})`);
+  if (BLOCK_IP && ident.i) c.push(`and(kind.eq.i,value.eq.${ident.i})`);
+  if (!c.length) return null;
+  const r = await sb('GET', rest(`am_blocks?or=${encodeURIComponent('(' + c.join(',') + ')')}&select=kind,group_id&limit=1`));
+  return r.ok && Array.isArray(r.data) && r.data[0] ? r.data[0] : null;
+}
+
+// Perangkat baru yang cocok dengan sinyal perangkat terblokir ikut diblokir (mis. setelah hapus data browser)
+async function propagateBlock(dev, ident, hit) {
+  const orig = await sb('GET', rest(`am_devices?block_group=eq.${hit.group_id}&blocked_via=eq.admin&select=blocked_reason&limit=1`));
+  const reason = (orig.ok && orig.data && orig.data[0] && orig.data[0].blocked_reason) || null;
+  const patch = {
+    blocked: true, blocked_at: new Date().toISOString(), blocked_reason: reason,
+    blocked_via: hit.kind === 'f' ? 'fp' : hit.kind === 'h' ? 'jaringan' : 'ip',
+    block_group: hit.group_id, allow: false
+  };
+  await sb('PATCH', rest(`am_devices?id=eq.${dev.id}`), patch, MIN);
+  await addBlockRows(hit.group_id, dev.id, ident);
+  return Object.assign({}, dev, patch);
+}
+
+// Satu pintu pemeriksaan: catat perangkat lalu cek apakah fitur premium dinonaktifkan
+async function guard(ident, name) {
+  if (!SB_READY) return { dev: null, blocked: false };
+  try {
+    let dev = await touchDevice(ident, name);
+    if (!dev) return { dev: null, blocked: false };
+    if (dev.blocked) return { dev, blocked: true, reason: dev.blocked_reason || '' };
+    if (!dev.allow) {
+      const hit = await findBlockHit(ident);
+      if (hit) {
+        dev = await propagateBlock(dev, ident, hit);
+        return { dev, blocked: true, reason: dev.blocked_reason || '' };
+      }
+    }
+    return { dev, blocked: false };
+  } catch (err) {
+    console.warn('[AM Premify] guard gagal:', err.message);
+    return { dev: null, blocked: false };
+  }
 }
 
 /* ---------- Supabase: catat aktivasi sukses (hanya server yang boleh insert) ---------- */
@@ -79,24 +333,35 @@ async function insertActivation(row) {
       apikey: SUPABASE_SERVICE_KEY,
       Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
       'Content-Type': 'application/json',
-      Prefer: 'return=minimal'
+      Prefer: 'return=representation'
     },
     body: JSON.stringify(row)
   });
 }
 
-async function recordActivation(email) {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return false;
+// Catat aktivasi sukses beserta nama pengguna; pemilik (perangkat) disimpan di tabel privat
+async function recordActivation(email, dev, ident) {
+  if (!SB_READY) return false;
   try {
     const safe = cleanEmail(email);
-    let r = await insertActivation(safe ? { source: 'verify', email: safe } : { source: 'verify' });
-    // Kolom email belum ada (supabase.sql belum dijalankan)? Tetap catat tanpa email supaya statistik tidak berhenti.
-    if (!r.ok && safe) {
-      console.warn('[AM Premify] Insert dengan email gagal (' + r.status + '), coba tanpa email. Jalankan supabase.sql.');
-      r = await insertActivation({ source: 'verify' });
+    const name = dev && dev.name ? dev.name : '';
+    const attempts = [];
+    const base = { source: 'verify' };
+    if (safe) base.email = safe;
+    if (name) attempts.push(Object.assign({ name }, base));
+    attempts.push(base);                       // kolom name belum ada (supabase.sql belum dijalankan)?
+    if (safe) attempts.push({ source: 'verify' }); // kolom email belum ada?
+    let r = null, created = null;
+    for (const row of attempts) {
+      r = await insertActivation(row);
+      if (r.ok) { try { created = (await r.json())[0]; } catch {} break; }
+      console.warn('[AM Premify] Insert aktivasi gagal (' + r.status + '), coba bentuk lain. Jalankan supabase.sql.');
     }
-    if (!r.ok) console.warn('[AM Premify] Supabase insert gagal:', r.status, await r.text());
-    return r.ok;
+    if (!r || !r.ok) { console.warn('[AM Premify] Supabase insert gagal:', r && r.status); return false; }
+    if (created && created.id && dev) {
+      await sb('POST', rest('am_act_owner'), { activation_id: created.id, device_id: dev.id, ip: ident ? ident.ip || null : null }, MIN);
+    }
+    return true;
   } catch (err) {
     console.warn('[AM Premify] Supabase tidak terjangkau:', err.message);
     return false;
@@ -123,24 +388,34 @@ async function verifyTurnstile(token, ip) {
 /* ---------- Proxy ke upstream ---------- */
 async function proxyUpstream(req, res, pathname) {
   try {
-    let body = await readBody(req);
-    let activationEmail = '';
+    if (!sameOrigin(req)) return sendJson(res, 403, { success: false, error: 'Permintaan ditolak.' });
+    const payload = await readJson(req, 64 * 1024);
+    if (!payload) return sendJson(res, 413, { success: false, error: 'Permintaan terlalu besar.' });
+
+    // Identitas perangkat + batas laju + pemeriksaan blokir (dicek di server, tidak bisa dilewati dari browser)
+    const ident = identify(req);
+    setIdentHeaders(req, res, ident);
+    if (rl('act:' + ident.id, ACT_LIMIT, 10 * 60000) || rl('actip:' + ident.ip, ACT_LIMIT * 3, 10 * 60000)) {
+      return sendJson(res, 429, { success: false, error: 'Terlalu banyak percobaan. Tunggu beberapa menit lalu coba lagi.' });
+    }
+    const name = payload.name;
+    delete payload.name;
+    const g = await guard(ident, name);
+    if (g.blocked) return sendJson(res, 403, { success: false, blocked: true, error: blockedText(g.reason) });
 
     // Verifikasi VIP wajib lolos Cloudflare Turnstile (dicek di server, bukan hanya di browser)
+    let activationEmail = '';
     if (pathname === '/api/verify-link') {
-      let payload = {};
-      try { payload = JSON.parse(body.toString('utf8') || '{}'); } catch {}
-      const okHuman = await verifyTurnstile(payload.cfToken, clientIp(req));
+      const okHuman = await verifyTurnstile(payload.cfToken, ident.ip);
       if (!okHuman) return sendJson(res, 403, { success: false, error: 'Verifikasi manusia (Cloudflare) gagal atau kedaluwarsa. Ulangi verifikasi.' });
       activationEmail = payload.email;
       delete payload.cfToken;
-      body = Buffer.from(JSON.stringify(payload));
     }
 
     const r = await fetch(UPSTREAM + pathname, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body
+      body: JSON.stringify(payload)
     });
     let text = await r.text();
 
@@ -150,7 +425,7 @@ async function proxyUpstream(req, res, pathname) {
         if (data && typeof data === 'object' && !Array.isArray(data)) {
           const ok = r.ok && data.success !== false && !data.error;
           if (ok) {
-            data.recorded = await recordActivation(activationEmail);
+            data.recorded = await recordActivation(activationEmail, g.dev, ident);
             text = JSON.stringify(data);
           }
         }
@@ -276,8 +551,292 @@ async function handleVisitor(req, res) {
   sendJson(res, 200, { ip, location: place, isp: g.isp || '' });
 }
 
+/* =====================================================================
+   v4.3 - CHAT PENGGUNA <-> ADMIN
+   Pengguna dikenali dari token perangkat bertanda tangan (bukan dari nama),
+   jadi tidak ada yang bisa membaca chat perangkat lain.
+   ===================================================================== */
+function cleanMsg(v) {
+  return String(v == null ? '' : v)
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g, '')
+    .replace(/\r\n?/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, 600);
+}
+
+async function loadMessages(deviceId, after) {
+  const cols = 'id,sender,body,created_at';
+  if (after > 0) {
+    const r = await sb('GET', rest(`am_chat?device_id=eq.${deviceId}&id=gt.${after}&select=${cols}&order=id.asc&limit=100`));
+    return r.ok && Array.isArray(r.data) ? r.data : [];
+  }
+  const r = await sb('GET', rest(`am_chat?device_id=eq.${deviceId}&select=${cols}&order=id.desc&limit=100`));
+  return r.ok && Array.isArray(r.data) ? r.data.reverse() : [];
+}
+
+async function handleMe(req, res) {
+  if (!sameOrigin(req)) return sendJson(res, 403, { error: 'Permintaan ditolak.' });
+  if (rl('me:' + clientIp(req), 40, 60000)) return sendJson(res, 429, { error: 'Terlalu banyak permintaan.' });
+  const body = await readJson(req, 4096);
+  if (!body) return sendJson(res, 413, { error: 'Permintaan terlalu besar.' });
+  const ident = identify(req);
+  setIdentHeaders(req, res, ident);
+  if (!SB_READY) return sendJson(res, 200, { ok: true, configured: false, blocked: false, unread: 0 });
+  const g = await guard(ident, body.name);
+  const unread = g.dev ? await sbCount('am_chat', `device_id=eq.${ident.id}&sender=eq.admin&read_at=is.null`) : 0;
+  sendJson(res, 200, { ok: true, configured: true, blocked: !!g.blocked, reason: g.reason || '', unread, token: ident.token });
+}
+
+async function handleChatGet(req, res, url) {
+  const ident = identify(req);
+  setIdentHeaders(req, res, ident);
+  if (!SB_READY) return sendJson(res, 503, { error: 'Chat butuh Supabase. Isi .env dan jalankan supabase.sql.' });
+  if (rl('chatget:' + ident.id, 60, 60000) || rl('chatgetip:' + ident.ip, 240, 60000)) return sendJson(res, 429, { error: 'Terlalu sering memuat.' });
+  const after = Math.max(0, parseInt(url.searchParams.get('after'), 10) || 0);
+  const [messages, unread, dev] = await Promise.all([
+    loadMessages(ident.id, after),
+    sbCount('am_chat', `device_id=eq.${ident.id}&sender=eq.admin&read_at=is.null`),
+    getDevice(ident.id)
+  ]);
+  sendJson(res, 200, { messages, unread, blocked: !!(dev && dev.blocked), reason: (dev && dev.blocked_reason) || '' });
+}
+
+async function handleChatUnread(req, res) {
+  const ident = identify(req);
+  setIdentHeaders(req, res, ident);
+  if (!SB_READY) return sendJson(res, 200, { unread: 0, blocked: false });
+  if (rl('chatun:' + ident.id, 30, 60000) || rl('chatunip:' + ident.ip, 120, 60000)) return sendJson(res, 429, { error: 'Terlalu sering memuat.' });
+  const [unread, dev] = await Promise.all([
+    sbCount('am_chat', `device_id=eq.${ident.id}&sender=eq.admin&read_at=is.null`),
+    getDevice(ident.id)
+  ]);
+  sendJson(res, 200, { unread, blocked: !!(dev && dev.blocked), reason: (dev && dev.blocked_reason) || '' });
+}
+
+async function handleChatSend(req, res) {
+  if (!sameOrigin(req)) return sendJson(res, 403, { error: 'Permintaan ditolak.' });
+  const ident = identify(req);
+  setIdentHeaders(req, res, ident);
+  if (!SB_READY) return sendJson(res, 503, { error: 'Chat butuh Supabase.' });
+  if (rl('chatsend:' + ident.id, 8, 30000) || rl('chatsendip:' + ident.ip, 40, 60000)) {
+    return sendJson(res, 429, { error: 'Pesan terlalu cepat. Tunggu sebentar.' });
+  }
+  const body = await readJson(req, 4096);
+  if (!body) return sendJson(res, 413, { error: 'Pesan terlalu besar.' });
+  const text = cleanMsg(body.body);
+  if (!text) return sendJson(res, 400, { error: 'Pesan kosong.' });
+  const dev = await touchDevice(ident, body.name); // chat tetap bisa dipakai walau premium dinonaktifkan
+  if (!dev) return sendJson(res, 502, { error: 'Gagal menyimpan pesan.' });
+  const r = await sb('POST', rest('am_chat'), { device_id: ident.id, sender: 'user', body: text }, { Prefer: 'return=representation' });
+  if (!r.ok || !r.data || !r.data[0]) return sendJson(res, 502, { error: 'Gagal mengirim pesan.' });
+  const m = r.data[0];
+  sendJson(res, 200, { ok: true, message: { id: m.id, sender: m.sender, body: m.body, created_at: m.created_at } });
+}
+
+async function handleChatRead(req, res) {
+  if (!sameOrigin(req)) return sendJson(res, 403, { error: 'Permintaan ditolak.' });
+  const ident = identify(req);
+  setIdentHeaders(req, res, ident);
+  if (!SB_READY) return sendJson(res, 200, { ok: true });
+  if (rl('chatread:' + ident.id, 30, 60000)) return sendJson(res, 429, { error: 'Terlalu sering.' });
+  await sb('PATCH', rest(`am_chat?device_id=eq.${ident.id}&sender=eq.admin&read_at=is.null`), { read_at: new Date().toISOString() }, MIN);
+  sendJson(res, 200, { ok: true });
+}
+
+/* =====================================================================
+   v4.3 - MENU ADMIN (/admin)
+   Login dengan ADMIN_PASSWORD di .env -> cookie HttpOnly + SameSite=Strict
+   bertanda tangan, kedaluwarsa 12 jam. Semua aksi lewat server.
+   ===================================================================== */
+const adminFails = new Map(); // ip -> { n, until }
+let adminGlobal = { n: 0, until: 0, first: 0 };
+const ADMIN_TTL = 12 * 3600 * 1000;
+const pwv = () => sha(ADMIN_PASSWORD).slice(0, 10);
+
+function isAdmin(req) {
+  if (!ADMIN_PASSWORD) return false;
+  const t = unsign(parseCookies(req).amp_adm);
+  return !!(t && t.r === 'admin' && t.exp > Date.now() && t.pv === pwv());
+}
+
+// Aksi tulis wajib: asal sama + header khusus (tidak bisa dikirim lintas situs tanpa izin CORS)
+function adminGuard(req, res, write) {
+  if (!ADMIN_PASSWORD) { sendJson(res, 503, { error: 'ADMIN_PASSWORD belum diisi di .env' }); return false; }
+  if (!isAdmin(req)) { sendJson(res, 401, { error: 'Sesi admin berakhir. Masuk lagi.' }); return false; }
+  if (write && (!sameOrigin(req) || req.headers['x-requested-with'] !== 'am-admin')) {
+    sendJson(res, 403, { error: 'Permintaan ditolak.' }); return false;
+  }
+  if (rl('adm:' + clientIp(req), 300, 60000)) { sendJson(res, 429, { error: 'Terlalu banyak permintaan.' }); return false; }
+  if (!SB_READY) { sendJson(res, 503, { error: 'Supabase belum dikonfigurasi (.env).' }); return false; }
+  res.setHeader('Cache-Control', 'no-store');
+  return true;
+}
+
+async function adminLogin(req, res) {
+  if (!ADMIN_PASSWORD) return sendJson(res, 503, { error: 'ADMIN_PASSWORD belum diisi di file .env' });
+  if (!sameOrigin(req)) return sendJson(res, 403, { error: 'Permintaan ditolak.' });
+  const ip = clientIp(req), now = Date.now();
+  const f = adminFails.get(ip);
+  const wait = Math.max(f && f.until > now ? f.until - now : 0, adminGlobal.until > now ? adminGlobal.until - now : 0);
+  if (wait > 0) return sendJson(res, 429, { error: `Terlalu banyak percobaan. Coba lagi ${Math.ceil(wait / 60000)} menit lagi.` });
+  const body = await readJson(req, 2048);
+  const ok = !!body && typeof body.password === 'string' && safeEq(sha(body.password), sha(ADMIN_PASSWORD));
+  if (!ok) {
+    const cur = f && !(f.until && f.until <= now) ? f : { n: 0, until: 0 };
+    cur.n++;
+    if (cur.n >= 5) { cur.until = now + 15 * 60000; cur.n = 0; }
+    adminFails.set(ip, cur);
+    if (adminFails.size > 5000) adminFails.clear();
+    if (now - adminGlobal.first > 15 * 60000) adminGlobal = { n: 0, until: 0, first: now };
+    if (++adminGlobal.n >= 40) adminGlobal.until = now + 15 * 60000;
+    console.warn('[AM Premify] Login admin GAGAL dari ' + ip);
+    await sleepMs(600 + Math.floor(Math.random() * 400));
+    return sendJson(res, 401, { error: 'Kata sandi salah.' });
+  }
+  adminFails.delete(ip);
+  const token = sign({ r: 'admin', exp: now + ADMIN_TTL, pv: pwv() });
+  res.setHeader('Set-Cookie', cookieStr(req, 'amp_adm', token, ADMIN_TTL / 1000, 'Strict'));
+  sendJson(res, 200, { ok: true });
+}
+
+const HEX32 = /^[0-9a-f]{32}$/;
+
+async function adminApi(req, res, url, pathname) {
+  const method = req.method;
+
+  if (pathname === '/api/admin/status' && method === 'GET') {
+    return sendJson(res, 200, { configured: !!ADMIN_PASSWORD, supabase: SB_READY, authed: isAdmin(req), strict: BLOCK_FP_STRICT });
+  }
+  if (pathname === '/api/admin/login' && method === 'POST') return adminLogin(req, res);
+  if (pathname === '/api/admin/logout' && method === 'POST') {
+    res.setHeader('Set-Cookie', cookieStr(req, 'amp_adm', '', 0, 'Strict'));
+    return sendJson(res, 200, { ok: true });
+  }
+
+  const write = method !== 'GET';
+  if (!adminGuard(req, res, write)) return;
+
+  if (pathname === '/api/admin/overview' && method === 'GET') {
+    const [unread, devices, blocked] = await Promise.all([
+      sbCount('am_chat', 'sender=eq.user&read_at=is.null'),
+      sbCount('am_devices', ''),
+      sbCount('am_devices', 'blocked=eq.true')
+    ]);
+    return sendJson(res, 200, { unread, devices, blocked });
+  }
+
+  if (pathname === '/api/admin/activations' && method === 'GET') {
+    const before = parseInt(url.searchParams.get('before'), 10) || null;
+    const r = await sb('POST', rest('rpc/am_activations_admin'), { lim: 40, before_id: before });
+    if (!r.ok) return sendJson(res, 502, { error: 'Gagal memuat aktivasi. Sudah menjalankan supabase.sql v4.3?' });
+    return sendJson(res, 200, { rows: r.data || [] });
+  }
+
+  if (pathname === '/api/admin/threads' && method === 'GET') {
+    const r = await sb('POST', rest('rpc/am_chat_threads'), { lim: 60 });
+    if (!r.ok) return sendJson(res, 502, { error: 'Gagal memuat chat. Sudah menjalankan supabase.sql v4.3?' });
+    return sendJson(res, 200, { rows: r.data || [] });
+  }
+
+  if (pathname === '/api/admin/devices' && method === 'GET') {
+    const q = String(url.searchParams.get('q') || '').slice(0, 40).replace(/[%_\\]/g, '');
+    const r = await sb('POST', rest('rpc/am_devices_overview'), { q, lim: 80 });
+    if (!r.ok) return sendJson(res, 502, { error: 'Gagal memuat perangkat. Sudah menjalankan supabase.sql v4.3?' });
+    return sendJson(res, 200, { rows: r.data || [] });
+  }
+
+  if (pathname === '/api/admin/chat' && method === 'GET') {
+    const id = String(url.searchParams.get('id') || '');
+    if (!HEX32.test(id)) return sendJson(res, 400, { error: 'ID perangkat tidak valid.' });
+    const after = Math.max(0, parseInt(url.searchParams.get('after'), 10) || 0);
+    const first = after === 0;
+    const [messages, dev] = await Promise.all([loadMessages(id, after), first ? getDevice(id) : null]);
+    if (url.searchParams.get('mark') === '1') {
+      await sb('PATCH', rest(`am_chat?device_id=eq.${id}&sender=eq.user&read_at=is.null`), { read_at: new Date().toISOString() }, MIN);
+    }
+    const out = { messages };
+    if (first) {
+      if (!dev) return sendJson(res, 404, { error: 'Perangkat tidak ditemukan.' });
+      const own = await sb('GET', rest(`am_act_owner?device_id=eq.${id}&select=activation_id,ip&order=activation_id.desc&limit=6`));
+      let acts = [];
+      if (own.ok && own.data && own.data.length) {
+        const ids = own.data.map((o) => o.activation_id).join(',');
+        const a = await sb('GET', rest(`activations?id=in.(${ids})&select=id,created_at,email&order=id.desc`));
+        acts = a.ok && Array.isArray(a.data) ? a.data : [];
+      }
+      out.device = {
+        id: dev.id, name: dev.name, names: dev.names || [], ip: dev.ip, ua: dev.ua,
+        first_seen: dev.first_seen, last_seen: dev.last_seen,
+        blocked: dev.blocked, blocked_reason: dev.blocked_reason, blocked_via: dev.blocked_via, allow: dev.allow
+      };
+      out.activations = acts;
+      out.acts_total = await sbCount('am_act_owner', `device_id=eq.${id}`);
+    }
+    return sendJson(res, 200, out);
+  }
+
+  if (pathname === '/api/admin/chat' && method === 'POST') {
+    const body = await readJson(req, 4096);
+    if (!body || !HEX32.test(String(body.id || ''))) return sendJson(res, 400, { error: 'ID perangkat tidak valid.' });
+    const text = cleanMsg(body.body);
+    if (!text) return sendJson(res, 400, { error: 'Pesan kosong.' });
+    if (!(await getDevice(body.id))) return sendJson(res, 404, { error: 'Perangkat tidak ditemukan.' });
+    const r = await sb('POST', rest('am_chat'), { device_id: body.id, sender: 'admin', body: text }, { Prefer: 'return=representation' });
+    if (!r.ok || !r.data || !r.data[0]) return sendJson(res, 502, { error: 'Gagal mengirim pesan.' });
+    const m = r.data[0];
+    return sendJson(res, 200, { ok: true, message: { id: m.id, sender: m.sender, body: m.body, created_at: m.created_at } });
+  }
+
+  if (pathname === '/api/admin/block' && method === 'POST') {
+    const body = await readJson(req, 2048);
+    if (!body || !HEX32.test(String(body.id || ''))) return sendJson(res, 400, { error: 'ID perangkat tidak valid.' });
+    const dev = await getDevice(body.id);
+    if (!dev) return sendJson(res, 404, { error: 'Perangkat tidak ditemukan.' });
+    const reason = cleanMsg(body.reason).replace(/\n+/g, ' ').slice(0, 120) || null;
+    const group = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const sig = { id: dev.id, fp: dev.fp || '', h: dev.hwip || '', i: dev.ip ? sha('ip|' + ipKey(dev.ip)).slice(0, 32) : '' };
+    await sb('PATCH', rest(`am_devices?id=eq.${dev.id}`),
+      { blocked: true, blocked_at: now, blocked_reason: reason, blocked_via: 'admin', block_group: group, allow: false }, MIN);
+    await addBlockRows(group, dev.id, sig);
+    // Identitas lain yang jelas perangkat yang sama (sidik jari + jaringan sama) langsung ikut diblokir
+    const rel = [];
+    if (dev.hwip) rel.push(`hwip.eq.${dev.hwip}`);
+    if (BLOCK_FP_STRICT && dev.fp) rel.push(`fp.eq.${dev.fp}`);
+    let related = 0;
+    if (rel.length) {
+      const r = await sb('GET', rest(`am_devices?or=${encodeURIComponent('(' + rel.join(',') + ')')}&id=neq.${dev.id}&blocked=eq.false&allow=eq.false&select=id,fp,hwip,ip&limit=50`));
+      for (const o of (r.ok && Array.isArray(r.data) ? r.data : [])) {
+        await sb('PATCH', rest(`am_devices?id=eq.${o.id}`),
+          { blocked: true, blocked_at: now, blocked_reason: reason, blocked_via: o.hwip === dev.hwip ? 'jaringan' : 'fp', block_group: group }, MIN);
+        await addBlockRows(group, o.id, { id: o.id, fp: o.fp || '', h: o.hwip || '', i: '' });
+        related++;
+      }
+    }
+    return sendJson(res, 200, { ok: true, related });
+  }
+
+  if (pathname === '/api/admin/unblock' && method === 'POST') {
+    const body = await readJson(req, 2048);
+    if (!body || !HEX32.test(String(body.id || ''))) return sendJson(res, 400, { error: 'ID perangkat tidak valid.' });
+    const dev = await getDevice(body.id);
+    if (!dev) return sendJson(res, 404, { error: 'Perangkat tidak ditemukan.' });
+    const clear = { blocked: false, blocked_at: null, blocked_reason: null, blocked_via: null, block_group: null };
+    if (dev.blocked && dev.blocked_via === 'admin' && dev.block_group) {
+      // Perangkat yang diblokir langsung oleh admin: seluruh kelompok blokirnya dilepas
+      await sb('PATCH', rest(`am_devices?block_group=eq.${dev.block_group}`), clear, MIN);
+      await sb('DELETE', rest(`am_blocks?group_id=eq.${dev.block_group}`), undefined, MIN);
+    } else {
+      // Terblokir otomatis (kemungkinan salah deteksi): hanya perangkat ini yang dilepas dan dikecualikan
+      await sb('PATCH', rest(`am_devices?id=eq.${dev.id}`), Object.assign({ allow: true }, clear), MIN);
+      if (dev.block_group) await sb('DELETE', rest(`am_blocks?group_id=eq.${dev.block_group}&device_id=eq.${dev.id}`), undefined, MIN);
+    }
+    return sendJson(res, 200, { ok: true });
+  }
+
+  return sendJson(res, 404, { error: 'Not Found' });
+}
+
 /* ---------- File statis ---------- */
-function serveFile(res, rel, onMissing) {
+function serveFile(res, rel, onMissing, extraHeaders) {
   const file = path.normalize(decodeURIComponent(rel)).replace(/^(\.\.[\/\\])+/, '');
   const full = path.join(PUBLIC_DIR, file);
   const base = path.basename(full);
@@ -287,43 +846,66 @@ function serveFile(res, rel, onMissing) {
   }
   fs.readFile(full, (err, data) => {
     if (err) return onMissing ? onMissing() : sendJson(res, 404, { error: 'Not Found' });
-    res.writeHead(200, {
+    res.writeHead(200, Object.assign({
       'Content-Type': MIME[path.extname(full)] || 'application/octet-stream',
-      'Cache-Control': 'no-cache'
-    });
+      'Cache-Control': 'no-cache',
+      'X-Content-Type-Options': 'nosniff'
+    }, extraHeaders || {}));
     res.end(data);
   });
 }
 
-const server = http.createServer((req, res) => {
-  const { pathname, search } = new URL(req.url, 'http://localhost');
+const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url, 'http://localhost');
+  const { pathname, search } = url;
 
-  if (req.method === 'POST' && (pathname === '/api/send-link' || pathname === '/api/verify-link')) {
-    return proxyUpstream(req, res, pathname);
+  try {
+    if (req.method === 'POST') {
+      if (pathname === '/api/send-link' || pathname === '/api/verify-link') return await proxyUpstream(req, res, pathname);
+      if (pathname === '/api/me') return await handleMe(req, res);
+      if (pathname === '/api/chat/send') return await handleChatSend(req, res);
+      if (pathname === '/api/chat/read') return await handleChatRead(req, res);
+      if (pathname.startsWith('/api/admin/')) return await adminApi(req, res, url, pathname);
+      return sendJson(res, 404, { error: 'Not Found' });
+    }
+    if (req.method !== 'GET') return sendJson(res, 404, { error: 'Not Found' });
+
+    if (pathname === '/api/visitor') return handleVisitor(req, res);
+    if (pathname === '/api/chat') return await handleChatGet(req, res, url);
+    if (pathname === '/api/chat/unread') return await handleChatUnread(req, res);
+    if (pathname.startsWith('/api/admin/')) return await adminApi(req, res, url, pathname);
+
+    // Konfigurasi publik untuk frontend (hanya anon key, bukan service key)
+    if (pathname === '/config.js') {
+      res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-store' });
+      return res.end('window.APP_CONFIG=' + JSON.stringify({ supabaseUrl: SUPABASE_URL, supabaseAnonKey: SUPABASE_ANON_KEY, turnstileSiteKey: TURNSTILE_SITE_KEY }) + ';');
+    }
+
+    // Menu admin (halaman tidak diindeks mesin pencari, tidak boleh di-embed)
+    if (pathname === ADMIN_PAGE) {
+      return serveFile(res, '/admin.html', null, {
+        'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer'
+      });
+    }
+
+    // URL bersih: /index.html -> /index
+    if (pathname.endsWith('.html')) {
+      const clean = pathname.replace(/\.html$/, '');
+      return redirect(res, 301, (clean === '/index' || clean === '' ? '/index' : clean) + (search || ''));
+    }
+
+    if (PAGES.has(pathname)) return serveFile(res, '/index.html');
+
+    // Aset statis; halaman tak dikenal (tanpa ekstensi) diarahkan ke /index
+    return serveFile(res, pathname, () => {
+      if (!path.extname(pathname)) return redirect(res, 302, '/index');
+      sendJson(res, 404, { error: 'Not Found' });
+    });
+  } catch (err) {
+    console.warn('[AM Premify] Error:', err.message);
+    if (!res.headersSent) sendJson(res, 500, { error: 'Terjadi kesalahan server.' });
+    else res.end();
   }
-  if (req.method !== 'GET') return sendJson(res, 404, { error: 'Not Found' });
-
-  if (pathname === '/api/visitor') return handleVisitor(req, res);
-
-  // Konfigurasi publik untuk frontend (hanya anon key, bukan service key)
-  if (pathname === '/config.js') {
-    res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-store' });
-    return res.end('window.APP_CONFIG=' + JSON.stringify({ supabaseUrl: SUPABASE_URL, supabaseAnonKey: SUPABASE_ANON_KEY, turnstileSiteKey: TURNSTILE_SITE_KEY }) + ';');
-  }
-
-  // URL bersih: /index.html -> /index
-  if (pathname.endsWith('.html')) {
-    const clean = pathname.replace(/\.html$/, '');
-    return redirect(res, 301, (clean === '/index' || clean === '' ? '/index' : clean) + (search || ''));
-  }
-
-  if (PAGES.has(pathname)) return serveFile(res, '/index.html');
-
-  // Aset statis; halaman tak dikenal (tanpa ekstensi) diarahkan ke /index
-  return serveFile(res, pathname, () => {
-    if (!path.extname(pathname)) return redirect(res, 302, '/index');
-    sendJson(res, 404, { error: 'Not Found' });
-  });
 });
 
 server.listen(PORT, () => {
@@ -337,4 +919,10 @@ server.listen(PORT, () => {
   } else {
     console.log('[AM Premify] Supabase: BELUM diisi. Salin .env.example menjadi .env lalu isi kuncinya.');
   }
+  if (!ADMIN_PASSWORD) console.log('[AM Premify] Menu admin NONAKTIF: isi ADMIN_PASSWORD di .env (min. 12 karakter) untuk mengaktifkan /admin.');
+  else {
+    console.log('[AM Premify] Menu admin aktif di: http://localhost:' + PORT + '/admin');
+    if (ADMIN_PASSWORD.length < 12) console.log('[AM Premify] PERINGATAN: ADMIN_PASSWORD terlalu pendek, pakai minimal 12 karakter.');
+  }
+  if (!process.env.APP_SECRET) console.log('[AM Premify] Saran: isi APP_SECRET di .env (acak, panjang) untuk penanda tangan token.');
 });
