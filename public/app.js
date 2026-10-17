@@ -23,9 +23,9 @@ function toast(msg, type = '') {
 }
 
 /* Navigasi (URL bersih tanpa .html: /index, /premium, /panduan) */
-const ROUTES = { home: '/index', premium: '/premium', guide: '/panduan', bio: '/biodata' };
-const TITLES = { home: 'Dashboard', premium: 'Premiumkan Akun', guide: 'Panduan', bio: 'Biodata Developer' };
-const VIEW_BY_PATH = { '/': 'home', '/index': 'home', '/premium': 'premium', '/panduan': 'guide', '/biodata': 'bio' };
+const ROUTES = { home: '/index', premium: '/premium', guide: '/panduan', reviews: '/rating', bio: '/biodata' };
+const TITLES = { home: 'Dashboard', premium: 'Premiumkan Akun', guide: 'Panduan', reviews: 'Rating & Ulasan', bio: 'Biodata Developer' };
+const VIEW_BY_PATH = { '/': 'home', '/index': 'home', '/premium': 'premium', '/panduan': 'guide', '/rating': 'reviews', '/ulasan': 'reviews', '/bukti': 'reviews', '/biodata': 'bio' };
 
 function show(view, push = true) {
   $$('.view').forEach((v) => v.classList.toggle('hidden', v.dataset.view !== view));
@@ -35,6 +35,7 @@ function show(view, push = true) {
   if (push && location.pathname !== ROUTES[view]) history.pushState({ view }, '', ROUTES[view]);
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (view === 'home') renderHome();
+  window.dispatchEvent(new CustomEvent('am:view', { detail: { view } }));
 }
 $$('.tab, .dock-i[data-tab]').forEach((t) => t.addEventListener('click', (e) => {
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return; // buka di tab baru tetap normal
@@ -285,6 +286,7 @@ $('#verify-form').addEventListener('submit', async (e) => {
       setStep(4);
       FX.confetti();
       renderMini();
+      window.dispatchEvent(new CustomEvent('am:activated', { detail: { email } }));
       toast(`Mantap ${userName() || ''}! Akun berhasil jadi VIP`.replace(' !', '!'));
     } else {
       term.log('err', 'Verifikasi gagal: ' + errText(r));
@@ -936,6 +938,7 @@ const welcome = {
     this.busy = true;
     store.set('am_user', name);
     applyUser(); renderMini();
+    window.dispatchEvent(new Event('am:namechange'));
     typing.token++;
     this.card.classList.add('out');
     await sleep(380);
@@ -1047,6 +1050,9 @@ const cmd = {
       { g: 'NAVIGASI', t: 'Premiumkan Akun', d: 'Kirim magic link & aktifkan VIP', i: 'crown', k: 'premium vip aktivasi email', run: go('premium') },
       { g: 'NAVIGASI', t: 'Panduan', d: '3 langkah + pertanyaan umum', i: 'book', k: 'panduan bantuan faq cara', run: go('guide') },
       { g: 'NAVIGASI', t: 'Biodata Developer', d: 'Kenali pembuat website ini', i: 'user', k: 'biodata developer kenz profil', run: go('bio') },
+      { g: 'NAVIGASI', t: 'Rating & Ulasan', d: 'Rating keseluruhan dari pengguna', i: 'star', k: 'rating ulasan bintang review nilai', run: () => (window.Reviews ? Reviews.go('rating') : show('reviews')) },
+      { g: 'NAVIGASI', t: 'Bukti Sukses', d: 'Screenshot akun premium dari pengguna', i: 'image', k: 'bukti sukses screenshot akun testimoni', run: () => (window.Reviews ? Reviews.go('bukti') : show('reviews')) },
+      { g: 'AKSI', t: 'Beri rating', d: 'Nilai AM Premify dengan bintang 1-5', i: 'star', k: 'beri rating bintang nilai ulasan tulis', run: () => window.Reviews && Reviews.openRate() },
       { g: 'AKSI', t: 'Tempel link dari clipboard', d: 'Buka halaman Premiumkan lalu tempel', i: 'link', k: 'tempel paste link magic', run: () => { show('premium'); setTimeout(() => $('#paste-btn').click(), 350); } },
       { g: 'AKSI', t: 'Chat WhatsApp admin', d: 'Pesan otomatis langsung terisi', i: 'wa', k: 'whatsapp wa hubungi admin bantuan chat', run: () => window.open(waLink(), '_blank', 'noopener') },
       { g: 'AKSI', t: 'Ikuti saluran kenzchillz', d: 'Update & info terbaru di WhatsApp', i: 'wa', k: 'saluran channel kenzchillz ikuti whatsapp', run: ext(CHANNEL_URL) },
