@@ -116,9 +116,19 @@ function renderHome() {
   }));
 }
 
-$('#clear-all').addEventListener('click', () => {
-  if (!store.get('am_accounts', []).length) return toast('Belum ada data');
-  if (!confirm('Hapus semua riwayat akun premium?')) return;
+$('#clear-all').addEventListener('click', async () => {
+  const n = store.get('am_accounts', []).length;
+  if (!n) return toast('Belum ada data');
+  const ok = await UI.confirm({
+    tone: 'danger', icon: 'trash',
+    title: 'Hapus semua riwayat?',
+    message: `${n} akun premium di daftar riwayat perangkat ini akan dihapus dari tampilan.`,
+    items: ['Daftar akun di Dashboard (hanya di perangkat ini)'],
+    itemsTitle: 'Yang ikut terhapus',
+    note: 'Akun yang sudah aktif VIP tidak terpengaruh. Tindakan ini tidak dapat dibatalkan.',
+    confirmText: 'Ya, hapus semua', cancelText: 'Batal'
+  });
+  if (!ok) return;
   store.set('am_accounts', []);
   renderHome();
   toast('Riwayat dihapus');
@@ -177,13 +187,15 @@ $('#term-copy').addEventListener('click', async () => {
 
 /* Premiumkan Akun */
 async function postJson(url, payload) {
-  const res = await fetch(url, {
+  // Nama pengguna ikut dikirim supaya aktivasi sukses tercatat atas namanya; perangkat dikenali lewat Device
+  const res = await Device.api(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(Object.assign({ name: userName() }, payload))
   });
   let data;
   try { data = await res.json(); } catch { data = { success: false, error: 'Respon tidak valid dari server' }; }
+  if (res.status === 403 && data && data.blocked) Device.setBlocked(true, '');
   const ok = res.ok && data.success !== false && !data.error;
   return { ok, data, status: res.status };
 }
@@ -212,7 +224,7 @@ const cf = {
   card: $('#cf-card'), state: $('#cf-state'), btn: $('#verify-btn'),
   set(st, label) { this.card.classList.remove('ok', 'err'); if (st) this.card.classList.add(st); this.state.textContent = label; },
   lock() { this.token = ''; this.btn.disabled = true; },
-  ready(token) { this.token = token; this.btn.disabled = false; this.set('ok', 'TERVERIFIKASI'); term.log('ok', 'Verifikasi manusia (Cloudflare) berhasil.'); },
+  ready(token) { this.token = token; this.btn.disabled = !!(window.Device && Device.state.blocked); this.set('ok', 'TERVERIFIKASI'); term.log('ok', 'Verifikasi manusia (Cloudflare) berhasil.'); },
   reset() { this.lock(); this.set('', 'BELUM'); try { if (window.turnstile && this.id !== null) window.turnstile.reset(this.id); } catch {} },
   mount() {
     const key = (window.APP_CONFIG && window.APP_CONFIG.turnstileSiteKey) || '';
@@ -377,12 +389,14 @@ const live = {
     const el = document.createElement('div');
     el.className = 'feed-item' + (isNew ? ' new' : '');
     const mail = row.email ? `<small class="feed-mail">${esc(row.email)}</small>` : '';
-    el.innerHTML = `<span class="dot"></span><div class="feed-txt"><b>Aktivasi sukses</b>${mail}</div><time>${clock(row.created_at)}</time>`;
+    const who = row.name ? esc(row.name) : 'Aktivasi sukses';
+    el.innerHTML = `<span class="dot"></span><div class="feed-txt"><b>${who}</b>${mail}</div><time>${clock(row.created_at)}</time>`;
     return el;
   },
   async loadFeed() {
     const q = (cols) => this.client.from('activations').select(cols).order('created_at', { ascending: false }).limit(8);
-    let { data, error } = await q('id,created_at,email');
+    let { data, error } = await q('id,created_at,email,name');
+    if (error) ({ data, error } = await q('id,created_at,email')); // kolom name belum ada (supabase.sql v4.3 belum dijalankan)
     if (error) ({ data } = await q('id,created_at')); // kolom email belum ada: tetap tampilkan feed lama
     if (!data || !data.length) return;
     const feed = $('#feed');
@@ -1054,6 +1068,7 @@ const cmd = {
       { g: 'NAVIGASI', t: 'Bukti Sukses', d: 'Screenshot akun premium dari pengguna', i: 'image', k: 'bukti sukses screenshot akun testimoni', run: () => (window.Reviews ? Reviews.go('bukti') : show('reviews')) },
       { g: 'AKSI', t: 'Beri rating', d: 'Nilai AM Premify dengan bintang 1-5', i: 'star', k: 'beri rating bintang nilai ulasan tulis', run: () => window.Reviews && Reviews.openRate() },
       { g: 'AKSI', t: 'Tempel link dari clipboard', d: 'Buka halaman Premiumkan lalu tempel', i: 'link', k: 'tempel paste link magic', run: () => { show('premium'); setTimeout(() => $('#paste-btn').click(), 350); } },
+      { g: 'AKSI', t: 'Chat admin', d: 'Tanya admin langsung di website ini', i: 'msg', k: 'chat admin pesan tanya bantuan balas', run: () => window.dispatchEvent(new Event('am:open-chat')) },
       { g: 'AKSI', t: 'Chat WhatsApp admin', d: 'Pesan otomatis langsung terisi', i: 'wa', k: 'whatsapp wa hubungi admin bantuan chat', run: () => window.open(waLink(), '_blank', 'noopener') },
       { g: 'AKSI', t: 'Ikuti saluran kenzchillz', d: 'Update & info terbaru di WhatsApp', i: 'wa', k: 'saluran channel kenzchillz ikuti whatsapp', run: ext(CHANNEL_URL) },
       { g: 'AKSI', t: 'Bagikan website', d: 'Kirim link AM Premify ke orang lain', i: 'share', k: 'bagikan share salin link', run: shareSite },
@@ -1156,3 +1171,20 @@ if (userName()) {
   document.documentElement.classList.add('needs-name');
   welcome.open(false);
 }
+
+
+/* v4.3 - Fitur premium dinonaktifkan oleh admin (perangkat terblokir) */
+(function blockedUi() {
+  const card = $('#blocked-card');
+  const apply = (blocked, reason) => {
+    card.classList.toggle('hidden', !blocked);
+    $('#blocked-txt').textContent = blocked
+      ? 'Admin menonaktifkan fitur premium untuk perangkat ini' + (reason ? ` (alasan: ${reason})` : '') + '. Ganti nama atau keluar akun tidak mengubahnya. Chat admin untuk meminta pengaktifan kembali.'
+      : '';
+    ['#send-btn', '#verify-btn'].forEach((s) => { const b = $(s); if (b && blocked) b.disabled = true; });
+    if (!blocked && $('#send-btn')) $('#send-btn').disabled = false;
+  };
+  window.addEventListener('am:blocked', (e) => apply(e.detail.blocked, e.detail.reason));
+  $('#blocked-chat').addEventListener('click', () => window.dispatchEvent(new Event('am:open-chat')));
+  apply(Device.state.blocked, Device.state.reason);
+})();
