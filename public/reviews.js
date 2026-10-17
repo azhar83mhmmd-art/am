@@ -83,16 +83,27 @@
   }
   async function ensureUser() {
     if (!client) throw new Error('Supabase belum dikonfigurasi. Isi file .env lalu restart server.');
-    if (S.uid) return S.uid;
+    if (S.uid) { await linkDev(); return S.uid; }
     const { data: sd } = await client.auth.getSession();
-    if (sd && sd.session) { S.uid = sd.session.user.id; return S.uid; }
+    if (sd && sd.session) { S.uid = sd.session.user.id; await linkDev(); return S.uid; }
     const { data, error } = await client.auth.signInAnonymously();
     if (error || !data || !data.user) {
       console.warn('[Rating] signInAnonymously gagal:', error && error.message);
       throw new Error('Rating belum aktif: nyalakan "Allow anonymous sign-ins" di Supabase (Authentication > Sign In / Providers).');
     }
     S.uid = data.user.id;
+    await linkDev();
     return S.uid;
+  }
+
+  // Developer: tautkan identitas anonim ke server agar database mengizinkan ulasan bernama "kenz"
+  async function linkDev() {
+    if (!client || !window.Device || !Device.state.dev) return;
+    try {
+      const { data } = await client.auth.getSession();
+      const token = data && data.session && data.session.access_token;
+      if (token) await Device.api('/api/dev/link', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) });
+    } catch {}
   }
 
   /* ---------------- statistik ---------------- */
@@ -180,7 +191,7 @@
     return `<article class="rc${mine ? ' mine' : ''}${isNew ? ' new' : ''}" data-id="${esc(r.id)}">
       <span class="rc-av" style="--c:${AVATAR[hash(name) % AVATAR.length]}" aria-hidden="true">${esc(ch)}</span>
       <div class="rc-main">
-        <div class="rc-top"><b class="rc-name">${esc(name)}</b>${mine ? '<span class="rc-me">KAMU</span>' : ''}<time class="rc-time" datetime="${esc(r.created_at)}">${esc(ago(r.created_at))}</time></div>
+        <div class="rc-top"><b class="rc-name">${nameHtml(name)}</b>${mine ? '<span class="rc-me">KAMU</span>' : ''}<time class="rc-time" datetime="${esc(r.created_at)}">${esc(ago(r.created_at))}</time></div>
         <div class="rc-meta">${starsHtml(r.rating, 16)}</div>
         ${r.comment ? `<p class="rc-txt">${esc(r.comment)}</p>` : ''}
         ${proof}
@@ -192,7 +203,7 @@
     return `<button type="button" class="pf-tile${isNew ? ' new' : ''}" data-id="${esc(r.id)}" data-view-proof="${esc(r.id)}" aria-label="Lihat bukti sukses dari ${esc(r.name)}">
       <span class="pf-img"><img src="${esc(pubUrl(r.proof_path))}" alt="" loading="lazy" decoding="async"></span>
       <span class="pf-ok">${ic('check')}BUKTI SUKSES</span>
-      <span class="pf-meta"><b>${esc(r.name)}</b>${starsHtml(r.rating, 13)}<small>${esc(ago(r.created_at))}</small></span>
+      <span class="pf-meta"><b>${nameHtml(r.name)}</b>${starsHtml(r.rating, 13)}<small>${esc(ago(r.created_at))}</small></span>
     </button>`;
   }
   const boxOf = (kind) => (kind === 'bukti' ? $('#pf-grid') : $('#rv-list'));
@@ -343,7 +354,7 @@
     const v = $('#pf-view');
     v.dataset.id = id;
     $('#pv-img').src = pubUrl(r.proof_path);
-    $('#pv-cap').innerHTML = `<b>${esc(r.name)}</b>${starsHtml(r.rating, 18)}${r.comment ? `<p>${esc(r.comment)}</p>` : ''}<small>${esc(ago(r.created_at))}</small>`;
+    $('#pv-cap').innerHTML = `<b>${nameHtml(r.name)}</b>${starsHtml(r.rating, 18)}${r.comment ? `<p>${esc(r.comment)}</p>` : ''}<small>${esc(ago(r.created_at))}</small>`;
     v.classList.remove('hidden');
     document.body.classList.add('no-scroll');
   }
