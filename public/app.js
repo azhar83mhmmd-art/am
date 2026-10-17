@@ -389,7 +389,7 @@ const live = {
     const el = document.createElement('div');
     el.className = 'feed-item' + (isNew ? ' new' : '');
     const mail = row.email ? `<small class="feed-mail">${esc(row.email)}</small>` : '';
-    const who = row.name ? esc(row.name) : 'Aktivasi sukses';
+    const who = row.name ? nameHtml(row.name) : 'Aktivasi sukses';
     el.innerHTML = `<span class="dot"></span><div class="feed-txt"><b>${who}</b>${mail}</div><time>${clock(row.created_at)}</time>`;
     return el;
   },
@@ -596,6 +596,18 @@ function cleanName(v) {
   return String(v || '').replace(/[<>&"`\\\/{}\[\]|^~$%]/g, '').replace(/\s+/g, ' ').trim().slice(0, 20);
 }
 function userName() { return cleanName(store.get('am_user', '')); }
+
+/* ---- Developer terverifikasi (centang biru) ----
+   Nama "kenz" dicadangkan: server hanya mengizinkannya untuk SATU perangkat developer (login /admin),
+   database juga menolak ulasan bernama kenz dari orang lain. Jadi nama ini di tampilan publik pasti developer. */
+function normName(n) {
+  const A = '013457@$', B = 'oieastas', C = '\u0435\u043a\u043e\u0430\u0455\u0456\u0440\u0441\u0445\u0443', D = 'ekoasipcxy';
+  return String(n || '').toLowerCase().replace(/./gu, (ch) => { let i = A.indexOf(ch); if (i >= 0) return B[i]; i = C.indexOf(ch); return i >= 0 ? D[i] : ch; }).replace(/[^a-z]/g, '');
+}
+const RESERVED_NAMES = ['kenz', 'kenzdev', 'kenzdeveloper', 'developerkenz', 'kenzadmin', 'adminkenz', 'kenzofficial', 'officialkenz', 'kenzchillz'];
+const isDevName = (n) => RESERVED_NAMES.includes(normName(n));
+const VBADGE = '<svg class="vb" viewBox="0 0 24 24" role="img" aria-label="Developer terverifikasi"><title>Developer terverifikasi</title><path fill="#1d9bf0" stroke="#0d0d0d" stroke-width="1.3" d="M12 1.8l2.4 1.7 2.9-.2 1 2.8 2.5 1.6-.9 2.8.9 2.8-2.5 1.6-1 2.8-2.9-.2L12 20.2l-2.4-1.7-2.9.2-1-2.8-2.5-1.6.9-2.8-.9-2.8 2.5-1.6 1-2.8 2.9.2z"/><path d="M7.8 12.2l3 3 5.6-6" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const nameHtml = (n) => esc(n) + (isDevName(n) ? ' ' + VBADGE : '');
 function validateName(v) {
   if (v.length < 2) return 'Nama minimal 2 karakter.';
   if (!/[\p{L}\p{N}]/u.test(v)) return 'Nama harus berisi huruf atau angka.';
@@ -607,9 +619,11 @@ function greetWord() {
 }
 function applyUser() {
   const n = userName();
-  $$('[data-user]').forEach((el) => (el.textContent = n || 'Teman'));
+  const dev = !!(window.Device && Device.state.dev) && isDevName(n);
+  $$('[data-user]').forEach((el) => { el.textContent = n || 'Teman'; if (dev) el.insertAdjacentHTML('beforeend', ' ' + VBADGE); });
   $('#avatar').textContent = (n.match(/[\p{L}\p{N}]/u) || ['?'])[0];
   $('#pname').textContent = n;
+  if (dev) $('#pname').insertAdjacentHTML('beforeend', ' ' + VBADGE);
   $('#profile-btn').setAttribute('aria-label', n ? `Ganti nama (${n})` : 'Ganti nama');
   updateClock();
 }
@@ -950,6 +964,9 @@ const welcome = {
     const err = validateName(name);
     if (err) return this.fail(err);
     this.busy = true;
+    // Nama dicadangkan (kenz) dicek ke server: hanya perangkat developer yang lolos
+    const chk = await Device.checkName(name);
+    if (!chk.ok) { this.busy = false; return this.fail(chk.error); }
     store.set('am_user', name);
     applyUser(); renderMini();
     window.dispatchEvent(new Event('am:namechange'));
@@ -1188,3 +1205,18 @@ if (userName()) {
   $('#blocked-chat').addEventListener('click', () => window.dispatchEvent(new Event('am:open-chat')));
   apply(Device.state.blocked, Device.state.reason);
 })();
+
+
+/* v4.4 - centang developer + penolakan nama dicadangkan */
+window.addEventListener('am:dev', () => applyUser());
+window.addEventListener('am:device', (e) => {
+  const d = e.detail || {};
+  if (d.nameRejected && !d.dev && userName() && isDevName(userName())) {
+    // Nama "kenz" tersimpan di perangkat yang bukan developer: dilepas, minta pilih nama lain
+    store.set('am_user', '');
+    applyUser();
+    document.documentElement.classList.add('needs-name');
+    welcome.open(false);
+    setTimeout(() => welcome.fail('Nama ini dicadangkan untuk developer dan tidak bisa dipakai. Pilih nama lain.'), 700);
+  }
+});
