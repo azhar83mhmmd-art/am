@@ -161,7 +161,7 @@ function identify(req) {
   const hw = pick(req.headers['x-hw']);
   const ip = clientIp(req);
   return {
-    id, fresh, fp, hw, ip,
+    id, fresh, fp, hw, ip, admin: isAdmin(req),
     ua: String(req.headers['user-agent'] || '').slice(0, 300),
     h: fp || hw ? sha(`${fp}|${hw}|${ipKey(ip)}`).slice(0, 32) : '',
     i: ip ? sha('ip|' + ipKey(ip)).slice(0, 32) : '',
@@ -223,22 +223,47 @@ function cleanName(v) {
 }
 const goodName = (n) => n.length >= 2 && /[\p{L}\p{N}]/u.test(n);
 
+// Nama dicadangkan untuk developer ("kenz"): huruf besar/kecil, spasi, simbol, angka mirip huruf (k3nz) dan
+// huruf kembar Cyrillic diabaikan. Aturan yang sama ada di SQL (am_reserved_name).
+const RESERVED = new Set(['kenz', 'kenzdev', 'kenzdeveloper', 'developerkenz', 'kenzadmin', 'adminkenz', 'kenzofficial', 'officialkenz', 'kenzchillz']);
+function normName(n) {
+  const a = '013457@$', b = 'oieastas', c = '\u0435\u043a\u043e\u0430\u0455\u0456\u0440\u0441\u0445\u0443', d = 'ekoasipcxy';
+  return String(n || '').toLowerCase().replace(/./gu, (ch) => {
+    let i = a.indexOf(ch); if (i >= 0) return b[i];
+    i = c.indexOf(ch); return i >= 0 ? d[i] : ch;
+  }).replace(/[^a-z]/g, '');
+}
+const isReserved = (n) => RESERVED.has(normName(n));
+const RESERVED_MSG = 'Nama ini dicadangkan untuk developer dan tidak bisa dipakai. Pilih nama lain.';
+
 async function getDevice(id) {
   const r = await sb('GET', rest(`am_devices?id=eq.${id}&select=*`));
   return r.ok && Array.isArray(r.data) ? r.data[0] || null : null;
 }
 
 // Catat / perbarui perangkat. Nama baru ikut disimpan ke riwayat nama.
+// Hanya SATU perangkat yang boleh memakai nama dicadangkan. Hak itu diberikan ke perangkat yang sedang
+// login di /admin (kata sandi admin) dan tersimpan permanen di perangkat tsb (is_dev).
+async function claimDev(id) {
+  await sb('PATCH', rest('am_devices?is_dev=eq.true'), { is_dev: false }, MIN);
+  await sb('PATCH', rest(`am_devices?id=eq.${id}`), { is_dev: true, blocked: false, blocked_at: null, blocked_reason: null, blocked_via: null, block_group: null, allow: true }, MIN);
+}
+
+// Catat / perbarui perangkat. Nama baru ikut disimpan ke riwayat nama.
 async function touchDevice(ident, nameRaw) {
-  const nm = cleanName(nameRaw);
-  const named = goodName(nm);
+  let nm = cleanName(nameRaw);
+  let named = goodName(nm);
+  let rejected = false;
   let dev = await getDevice(ident.id);
+  if (named && isReserved(nm)) {
+    if (dev && dev.is_dev) { /* developer sah */ }
+    else if (ident.admin) { if (!dev) dev = await createDevice(ident, ''); if (dev) { await claimDev(ident.id); dev.is_dev = true; dev.blocked = false; } }
+    else { named = false; rejected = true; }
+  }
   if (!dev) {
-    const row = { id: ident.id, fp: ident.fp || null, hw: ident.hw || null, hwip: ident.h || null, ip: ident.ip || null, ua: ident.ua || null };
-    if (named) { row.name = nm; row.names = [nm]; }
-    const r = await sb('POST', rest('am_devices'), row, { Prefer: 'return=representation,resolution=ignore-duplicates' });
-    if (r.ok && Array.isArray(r.data) && r.data[0]) return r.data[0];
-    return getDevice(ident.id);
+    dev = await createDevice(ident, named ? nm : '');
+    if (dev) dev._nameRejected = rejected;
+    return dev;
   }
   const patch = {};
   if (ident.fp && ident.fp !== dev.fp) patch.fp = ident.fp;
@@ -250,13 +275,24 @@ async function touchDevice(ident, nameRaw) {
     patch.name = nm;
     patch.names = [nm].concat((dev.names || []).filter((x) => x !== nm)).slice(0, 10);
   }
+  // Nama dicadangkan yang pernah tersimpan di perangkat non-developer dibersihkan
+  if (!dev.is_dev && dev.name && isReserved(dev.name)) { patch.name = null; rejected = true; }
   const stale = Date.now() - Date.parse(dev.last_seen) > 60000;
   if (Object.keys(patch).length || stale) {
     patch.last_seen = new Date().toISOString();
     await sb('PATCH', rest(`am_devices?id=eq.${ident.id}`), patch, MIN);
     Object.assign(dev, patch);
   }
+  dev._nameRejected = rejected;
   return dev;
+}
+
+async function createDevice(ident, nm) {
+  const row = { id: ident.id, fp: ident.fp || null, hw: ident.hw || null, hwip: ident.h || null, ip: ident.ip || null, ua: ident.ua || null };
+  if (nm) { row.name = nm; row.names = [nm]; }
+  const r = await sb('POST', rest('am_devices'), row, { Prefer: 'return=representation,resolution=ignore-duplicates' });
+  if (r.ok && Array.isArray(r.data) && r.data[0]) return r.data[0];
+  return getDevice(ident.id);
 }
 
 function signalsOf(d) { // d: { id, fp, h, ip } -> baris untuk am_blocks
@@ -301,6 +337,7 @@ async function guard(ident, name) {
   try {
     let dev = await touchDevice(ident, name);
     if (!dev) return { dev: null, blocked: false };
+    if (dev.is_dev) return { dev, blocked: false };
     if (dev.blocked) return { dev, blocked: true, reason: dev.blocked_reason || '' };
     if (!dev.allow) {
       const hit = await findBlockHit(ident);
@@ -579,10 +616,53 @@ async function handleMe(req, res) {
   if (!body) return sendJson(res, 413, { error: 'Permintaan terlalu besar.' });
   const ident = identify(req);
   setIdentHeaders(req, res, ident);
-  if (!SB_READY) return sendJson(res, 200, { ok: true, configured: false, blocked: false, unread: 0 });
+  if (!SB_READY) return sendJson(res, 200, { ok: true, configured: false, blocked: false, unread: 0, dev: false, nameRejected: isReserved(body.name) && !ident.admin });
   const g = await guard(ident, body.name);
   const unread = g.dev ? await sbCount('am_chat', `device_id=eq.${ident.id}&sender=eq.admin&read_at=is.null`) : 0;
-  sendJson(res, 200, { ok: true, configured: true, blocked: !!g.blocked, reason: g.reason || '', unread, token: ident.token });
+  sendJson(res, 200, { ok: true, configured: true, blocked: !!g.blocked, reason: g.reason || '', unread, token: ident.token, dev: !!(g.dev && g.dev.is_dev), nameRejected: !!(g.dev && g.dev._nameRejected) });
+}
+
+// Dicek saat pengguna memilih nama (layar sambutan). Nama dicadangkan hanya lolos untuk developer.
+async function handleName(req, res) {
+  if (!sameOrigin(req)) return sendJson(res, 403, { error: 'Permintaan ditolak.' });
+  if (rl('name:' + clientIp(req), 30, 60000)) return sendJson(res, 429, { error: 'Terlalu banyak percobaan. Tunggu sebentar.' });
+  const body = await readJson(req, 1024);
+  if (!body) return sendJson(res, 413, { error: 'Permintaan terlalu besar.' });
+  const ident = identify(req);
+  setIdentHeaders(req, res, ident);
+  const nm = cleanName(body.name);
+  if (!isReserved(nm)) return sendJson(res, 200, { ok: true, dev: false });
+  if (SB_READY) {
+    const dev = await getDevice(ident.id);
+    if (dev && dev.is_dev) return sendJson(res, 200, { ok: true, dev: true });
+  }
+  if (ident.admin) {
+    if (SB_READY) { const d = await touchDevice(ident, nm); if (!d || !d.is_dev) return sendJson(res, 502, { error: 'Gagal menyimpan status developer.' }); }
+    return sendJson(res, 200, { ok: true, dev: true });
+  }
+  console.warn('[AM Premify] Percobaan memakai nama dicadangkan dari ' + ident.ip);
+  sendJson(res, 409, { error: RESERVED_MSG, reserved: true });
+}
+
+// Developer menautkan identitas anonim Supabase-nya supaya ulasan bernama "kenz" diizinkan oleh database
+async function handleDevLink(req, res) {
+  if (!sameOrigin(req)) return sendJson(res, 403, { error: 'Permintaan ditolak.' });
+  const ident = identify(req);
+  setIdentHeaders(req, res, ident);
+  if (!SB_READY || !SUPABASE_ANON_KEY) return sendJson(res, 503, { error: 'Supabase belum dikonfigurasi.' });
+  if (rl('devlink:' + ident.id, 10, 60000)) return sendJson(res, 429, { error: 'Terlalu sering.' });
+  const dev = await getDevice(ident.id);
+  if (!dev || !dev.is_dev) return sendJson(res, 403, { error: 'Bukan perangkat developer.' });
+  const body = await readJson(req, 4096);
+  const token = body && typeof body.token === 'string' ? body.token : '';
+  if (!token || token.length > 4000) return sendJson(res, 400, { error: 'Token tidak valid.' });
+  try {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + token }, signal: AbortSignal.timeout(8000) });
+    const u = await r.json();
+    if (!r.ok || !u || !/^[0-9a-f-]{36}$/.test(u.id || '')) return sendJson(res, 401, { error: 'Sesi tidak valid.' });
+    await sb('POST', rest('am_devs?on_conflict=uid'), { uid: u.id, device_id: ident.id }, { Prefer: 'resolution=merge-duplicates,return=minimal' });
+    return sendJson(res, 200, { ok: true });
+  } catch (err) { return sendJson(res, 502, { error: 'Gagal memverifikasi sesi.' }); }
 }
 
 async function handleChatGet(req, res, url) {
@@ -790,6 +870,7 @@ async function adminApi(req, res, url, pathname) {
     if (!body || !HEX32.test(String(body.id || ''))) return sendJson(res, 400, { error: 'ID perangkat tidak valid.' });
     const dev = await getDevice(body.id);
     if (!dev) return sendJson(res, 404, { error: 'Perangkat tidak ditemukan.' });
+    if (dev.is_dev) return sendJson(res, 400, { error: 'Perangkat developer tidak bisa diblokir.' });
     const reason = cleanMsg(body.reason).replace(/\n+/g, ' ').slice(0, 120) || null;
     const group = crypto.randomUUID();
     const now = new Date().toISOString();
@@ -863,6 +944,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST') {
       if (pathname === '/api/send-link' || pathname === '/api/verify-link') return await proxyUpstream(req, res, pathname);
       if (pathname === '/api/me') return await handleMe(req, res);
+      if (pathname === '/api/name') return await handleName(req, res);
+      if (pathname === '/api/dev/link') return await handleDevLink(req, res);
       if (pathname === '/api/chat/send') return await handleChatSend(req, res);
       if (pathname === '/api/chat/read') return await handleChatRead(req, res);
       if (pathname.startsWith('/api/admin/')) return await adminApi(req, res, url, pathname);
