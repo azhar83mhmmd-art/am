@@ -306,10 +306,29 @@
   async function del(id) {
     const r = S.rows.get(id);
     if (!client || !r || !S.uid || r.user_id !== S.uid) return toast('Hanya pemilik yang bisa menghapus ulasan ini', 'err');
-    if (!confirm('Hapus ulasanmu? Rating, ulasan, dan bukti yang kamu unggah ikut terhapus.')) return;
-    const { data, error } = await client.from('reviews').delete().eq('id', id).select('id');
-    if (error || !data || !data.length) return toast('Gagal menghapus ulasan', 'err');
-    if (r.proof_path) client.storage.from(BUCKET).remove([r.proof_path]);
+
+    const gone = ['Rating ' + r.rating + ' dari 5 bintang'];
+    if (r.comment) gone.push('Teks ulasan yang kamu tulis');
+    if (r.proof_path) gone.push('Bukti akun premium yang kamu unggah');
+    const ok = await UI.confirm({
+      tone: 'danger',
+      icon: 'trash',
+      title: 'Hapus ulasanmu?',
+      message: 'Ulasan ini akan hilang dari halaman Rating, Ulasan, dan Bukti Sukses untuk semua pengunjung.',
+      preview: { head: `${'★'.repeat(r.rating)}${'☆'.repeat(5 - r.rating)}  ·  ${r.name}`, text: r.comment || '' },
+      itemsTitle: 'Yang ikut terhapus',
+      items: gone,
+      note: 'Tindakan ini tidak dapat dibatalkan. Kamu bisa menulis ulasan baru setelahnya.',
+      confirmText: 'Ya, hapus ulasan',
+      cancelText: 'Batal',
+      busyText: 'Menghapus…',
+      onConfirm: async () => {
+        const { data, error } = await client.from('reviews').delete().eq('id', id).select('id');
+        if (error || !data || !data.length) throw new Error('Gagal menghapus ulasan. Periksa koneksi lalu coba lagi.');
+        if (r.proof_path) client.storage.from(BUCKET).remove([r.proof_path]);
+      }
+    });
+    if (!ok) return;
     removeRow(id);
     S.mine = null;
     renderMine();
