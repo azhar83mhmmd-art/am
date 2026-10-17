@@ -332,3 +332,49 @@ revoke all on function public.am_devices_overview(text, int) from public, anon, 
 grant execute on function public.am_activations_admin(int, bigint) to service_role;
 grant execute on function public.am_chat_threads(int) to service_role;
 grant execute on function public.am_devices_overview(text, int) to service_role;
+
+-- =====================================================================
+-- v4.4 - NAMA "kenz" = DEVELOPER TERVERIFIKASI (centang biru), HANYA 1 PERANGKAT
+-- Aman dijalankan berulang kali.
+-- =====================================================================
+
+-- 18) Penanda perangkat developer (maksimal SATU baris bernilai true)
+alter table public.am_devices add column if not exists is_dev boolean not null default false;
+create unique index if not exists am_devices_one_dev on public.am_devices ((true)) where is_dev;
+
+-- 19) Identitas anonim Supabase milik developer (dipakai agar ulasan bernama "kenz" hanya bisa dibuat developer)
+create table if not exists public.am_devs (
+  uid        uuid primary key,
+  device_id  text references public.am_devices(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+alter table public.am_devs enable row level security;
+revoke all on public.am_devs from anon, authenticated;
+
+-- 20) Nama yang dicadangkan (huruf besar/kecil, spasi, simbol, angka mirip huruf, dan huruf kembar Cyrillic diabaikan)
+create or replace function public.am_reserved_name(n text)
+returns boolean
+language sql immutable as $$
+  select regexp_replace(
+           translate(translate(lower(coalesce(n, '')), '013457@$', 'oieastas'), 'екоаѕірсху', 'ekoasipcxy'),
+           '[^a-z]', '', 'g')
+         in ('kenz', 'kenzdev', 'kenzdeveloper', 'developerkenz', 'kenzadmin', 'adminkenz', 'kenzofficial', 'officialkenz', 'kenzchillz');
+$$;
+
+-- 21) Ulasan: nama dicadangkan hanya boleh dipakai identitas developer
+create or replace function public.am_reviews_name_guard()
+returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if public.am_reserved_name(new.name)
+     and not exists (select 1 from public.am_devs d where d.uid = new.user_id) then
+    raise exception 'Nama ini dicadangkan untuk developer.' using errcode = 'P0001';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists am_reviews_name_guard on public.reviews;
+create trigger am_reviews_name_guard
+  before insert or update of name on public.reviews
+  for each row execute function public.am_reviews_name_guard();
