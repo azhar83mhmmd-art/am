@@ -1,4 +1,4 @@
-// AM Premify v4.3 - Identitas perangkat
+// AM Premify v4.5 - Identitas perangkat
 // - Token perangkat bertanda tangan dari server disimpan di 3 tempat: cookie HttpOnly (server), localStorage, IndexedDB.
 //   Keluar akun / ganti nama / hapus salah satu penyimpanan TIDAK mengganti identitas perangkat.
 // - Sidik jari (fp) & perangkat keras (hw) dikirim sebagai hash lewat header; server memakainya untuk mengenali
@@ -7,7 +7,11 @@
   'use strict';
 
   const LS_KEY = 'am_did';
-  const state = { token: '', fp: '', hw: '', blocked: false, reason: '', unread: 0, configured: true, dev: false };
+  // Petunjuk tampilan saja: perangkat ini pernah diverifikasi server sebagai developer (agar centang biru tidak berkedip).
+  // Keputusan sebenarnya tetap di server; jika server menjawab bukan developer, petunjuk ini dihapus.
+  let devHint = false;
+  try { devHint = localStorage.getItem('am_isdev') === '1'; } catch {}
+  const state = { token: '', fp: '', hw: '', blocked: false, reason: '', unread: 0, configured: true, dev: devHint };
 
   /* ---------- penyimpanan cadangan ---------- */
   const idbOpen = () => new Promise((res) => {
@@ -133,18 +137,22 @@
     v = !!v;
     if (v === state.dev) return;
     state.dev = v;
+    try { localStorage.setItem('am_isdev', v ? '1' : '0'); } catch {}
     document.documentElement.classList.toggle('is-dev', v);
     window.dispatchEvent(new CustomEvent('am:dev', { detail: { dev: v } }));
   }
 
-  // Cek nama ke server. Nama "kenz" (developer) hanya lolos untuk perangkat developer; selain itu ditolak.
-  async function checkName(name) {
+  // Cek nama ke server. Nama "kenz" (developer) hanya lolos untuk perangkat developer.
+  // Perangkat baru bisa membuktikan diri dengan kata sandi developer (sama dengan kata sandi /admin).
+  async function checkName(name, pass) {
     try {
-      const r = await api('/api/name', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+      const body = { name };
+      if (pass) body.pass = pass;
+      const r = await api('/api/name', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const d = await r.json().catch(() => ({}));
-      if (r.status === 409) return { ok: false, error: d.error || 'Nama ini tidak bisa dipakai.' };
+      if (r.status === 409 || r.status === 401) return { ok: false, error: d.error || 'Nama ini tidak bisa dipakai.', needPass: !!d.needPass };
       if (r.ok) { if (d.dev) setDev(true); return { ok: true, dev: !!d.dev }; }
-      if (r.status === 429) return { ok: false, error: d.error || 'Terlalu banyak percobaan.' };
+      if (r.status === 429) return { ok: false, error: d.error || 'Terlalu banyak percobaan.', needPass: !!d.needPass };
       return { ok: true }; // server bermasalah: jangan halangi pengguna biasa (nama dicadangkan tetap dicek ulang di server saat sinkron)
     } catch { return { ok: true }; }
   }
