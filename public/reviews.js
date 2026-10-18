@@ -1,4 +1,4 @@
-// AM Premify v4.2 - Rating, Ulasan & Bukti Sukses (Supabase, real-time)
+// AM Premify v4.5 - Rating, Ulasan & Bukti Sukses (+ balasan & like lewat social.js) (Supabase, real-time)
 // Memakai helper global dari app.js: $, $$, esc, store, toast, fmt, userName, FX, live, show
 (function () {
   'use strict';
@@ -195,6 +195,7 @@
         <div class="rc-meta">${starsHtml(r.rating, 16)}</div>
         ${r.comment ? `<p class="rc-txt">${esc(r.comment)}</p>` : ''}
         ${proof}
+        <div class="rc-soc" data-soc="${esc(r.id)}"></div>
       </div>
       ${mine ? `<button type="button" class="mini rc-del" data-del-review="${esc(r.id)}" aria-label="Hapus ulasanmu" title="Hapus ulasanmu">${ic('trash')}</button>` : ''}
     </article>`;
