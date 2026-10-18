@@ -1,4 +1,4 @@
-# AM Premify v4.3
+# AM Premify v4.5
 
 Jalankan: `node server.js` (Node 18+, tanpa npm install), buka http://localhost:8112
 
@@ -32,3 +32,13 @@ v4.4 - Nama "kenz" = developer terverifikasi (centang biru), hanya 1 perangkat:
 - Orang lain yang mengetik kenz (K3nz, k e n z, kenz.dev, dll) ditolak server; nama kenz yang tersimpan di perangkat lain otomatis dilepas
 - Database menolak ulasan bernama kenz dari identitas selain developer (trigger SQL). Jalankan ulang supabase.sql (bagian v4.4)
 - Memindahkan ke HP lain: login /admin di HP baru lalu isi nama kenz, HP lama otomatis kehilangan status developer
+
+v4.5 - Balasan ulasan, like, room publik, kontrol admin per pengguna, perbaikan nama kenz:
+- Ulasan: tombol suka (hati) dan "N balasan". Ketuk untuk membuka balasan, bisa membalas, membalas balasan orang lain (@nama), menyukai balasan, dan menghapus balasanmu sendiri. Diperbarui otomatis
+- Room publik (/room, ikon Room di dock): semua pengguna ngobrol, ada jumlah online, balas pesan tertentu, hapus pesan sendiri
+- Centang biru developer ikut tampil di balasan & room. Ditentukan SERVER dari status perangkat developer, tidak bisa dipalsukan dengan mengganti nama
+- Admin > tab Pengguna: tiap pengguna tampil "nama + N× create". Ketuk untuk melihat email apa saja yang dibuatnya (lengkap, bisa disalin), plus tombol Chat / Nonaktifkan premium / Bisukan
+- Admin > tab Komunitas: hapus pesan room dan balasan ulasan, bisukan pelaku (durasi menit). Pengguna yang dibisukan tidak bisa kirim pesan di room/balasan
+- Email lengkap kini disimpan di tabel privat am_act_owner (hanya server/admin). Aktivasi lama hanya punya email tersamar, jadi tampil bertanda "tersamar (data lama)"
+- Nama "kenz": tidak perlu login /admin dulu. Ketik kenz di layar nama, kolom KATA SANDI DEVELOPER muncul, isi sama dengan ADMIN_PASSWORD. Perangkat itu jadi developer permanen (hanya 1 perangkat)
+- WAJIB: jalankan ulang supabase.sql (bagian v4.5) lalu restart server
