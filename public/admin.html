@@ -18,6 +18,10 @@
 <body class="adm">
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
+    <symbol id="i-users" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1L5 6"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="1"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="1"/><path d="M22 6l-10 7L2 6"/></symbol>
     <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></symbol>
     <symbol id="i-msg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
     <symbol id="i-send" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></symbol>
@@ -78,12 +82,26 @@
     </div>
 
     <nav class="adm-tabs" role="tablist">
-      <button class="adm-tab on" role="tab" data-tab="act" type="button"><svg class="ic"><use href="#i-ok"/></svg>Aktivasi</button>
+      <button class="adm-tab on" role="tab" data-tab="usr" type="button"><svg class="ic"><use href="#i-users"/></svg>Pengguna</button>
+      <button class="adm-tab" role="tab" data-tab="act" type="button"><svg class="ic"><use href="#i-ok"/></svg>Aktivasi</button>
       <button class="adm-tab" role="tab" data-tab="chat" type="button"><svg class="ic"><use href="#i-msg"/></svg>Chat<span class="abadge hidden" id="tab-badge">0</span></button>
       <button class="adm-tab" role="tab" data-tab="dev" type="button"><svg class="ic"><use href="#i-user"/></svg>Perangkat</button>
+      <button class="adm-tab" role="tab" data-tab="com" type="button"><svg class="ic"><use href="#i-msg"/></svg>Komunitas</button>
     </nav>
 
-    <section id="tab-act">
+    <section id="tab-usr">
+      <div class="adm-bar usr-bar">
+        <label class="field"><svg class="ic"><use href="#i-search"/></svg><input class="input" id="usr-q" type="search" placeholder="Cari nama, IP, atau email…" maxlength="40" autocomplete="off"></label>
+        <div class="seg" id="usr-sort" role="group" aria-label="Urutkan">
+          <button type="button" class="on" data-sort="acts">Terbanyak create</button>
+          <button type="button" data-sort="recent">Terbaru aktif</button>
+        </div>
+        <label class="chk"><input type="checkbox" id="usr-only" checked><span>Hanya yang pernah create</span></label>
+      </div>
+      <div class="adm-list" id="usr-list" style="margin-top:12px"></div>
+    </section>
+
+    <section id="tab-act" class="hidden">
       <div class="adm-list" id="act-list"></div>
       <button class="ibtn more hidden" id="act-more" type="button"><svg class="ic"><use href="#i-down"/></svg>Muat lebih lama</button>
     </section>
@@ -100,6 +118,14 @@
         <label class="field"><svg class="ic"><use href="#i-search"/></svg><input class="input" id="dev-q" type="search" placeholder="Cari nama atau IP…" maxlength="40" autocomplete="off"></label>
       </div>
       <div class="adm-list" id="dev-list" style="margin-top:12px"></div>
+    </section>
+
+    <section id="tab-com" class="hidden">
+      <div class="seg" id="com-sub" role="group" aria-label="Moderasi" style="margin-bottom:12px">
+        <button type="button" class="on" data-sub="room">Room publik<span class="abadge" id="com-online" style="margin-left:6px">0</span></button>
+        <button type="button" data-sub="rep">Balasan ulasan</button>
+      </div>
+      <div class="adm-list" id="com-list"></div>
     </section>
   </main>
 </div>
