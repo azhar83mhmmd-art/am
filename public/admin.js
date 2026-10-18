@@ -1,4 +1,4 @@
-// AM Premify v4.3 - Menu admin (/admin)
+// AM Premify v4.5 - Menu admin (/admin): pengguna + jumlah create + email, komunitas, aktivasi, chat, perangkat
 (function () {
   'use strict';
 
@@ -60,9 +60,12 @@
 
   /* ---------- state ---------- */
   const S = {
-    tab: 'act', acts: [], actMore: true, threads: [], devs: [], q: '', unread: -1, authed: false,
-    conv: null, timers: [], lastErr: false
+    tab: 'usr', acts: [], actMore: true, threads: [], devs: [], q: '', unread: -1, authed: false,
+    conv: null, timers: [], lastErr: false,
+    users: [], uq: '', usort: 'acts', uonly: true, uopen: new Set(), uacts: new Map(),
+    csub: 'room', com: [], online: 0
   };
+  const VB = '<svg class="vb" viewBox="0 0 24 24" role="img" aria-label="Developer terverifikasi"><title>Developer terverifikasi</title><path fill="#1d9bf0" stroke="#0d0d0d" stroke-width="1.3" d="M12 1.8l2.4 1.7 2.9-.2 1 2.8 2.5 1.6-.9 2.8.9 2.8-2.5 1.6-1 2.8-2.9-.2L12 20.2l-2.4-1.7-2.9.2-1-2.8-2.5-1.6.9-2.8-.9-2.8 2.5-1.6 1-2.8 2.9.2z"/><path d="M7.8 12.2l3 3 5.6-6" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
   function live(on) {
     const b = $('#live');
@@ -109,7 +112,7 @@
     const [p, q] = h.split('?');
     const [tab, id] = p.split('/');
     return {
-      tab: ['act', 'chat', 'dev'].includes(tab) ? tab : 'act',
+      tab: ['usr', 'act', 'chat', 'dev', 'com'].includes(tab) ? tab : 'usr',
       id: /^[0-9a-f]{32}$/.test(id || '') ? id : '',
       act: Number(new URLSearchParams(q || '').get('act')) || 0
     };
@@ -121,7 +124,9 @@
     const h = parseHash();
     S.tab = h.tab;
     $$('.adm-tab').forEach((b) => { const on = b.dataset.tab === h.tab; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); });
-    ['act', 'chat', 'dev'].forEach((t) => $('#tab-' + t).classList.toggle('hidden', t !== h.tab));
+    ['usr', 'act', 'chat', 'dev', 'com'].forEach((t) => $('#tab-' + t).classList.toggle('hidden', t !== h.tab));
+    if (h.tab === 'usr') loadUsers();
+    if (h.tab === 'com') loadCom();
     if (h.tab === 'act') loadActs(false);
     if (h.tab === 'dev') loadDevs();
     if (h.tab === 'chat') {
@@ -162,6 +167,158 @@
   const blockBtn = (id, blocked) => blocked
     ? `<button class="ibtn good" data-do="unblock" data-id="${id}" type="button">${I('check')}Aktifkan</button>`
     : `<button class="ibtn danger" data-do="block" data-id="${id}" type="button">${I('ban')}Nonaktifkan</button>`;
+
+  /* ---------- tab Pengguna: nama + jumlah create, klik untuk melihat email ---------- */
+  const isMuted = (u) => !!(u.muted_until && Date.parse(u.muted_until) > Date.now());
+  function renderUsers() {
+    const box = $('#usr-list');
+    if (!S.users.length) { box.innerHTML = `<div class="adm-empty">${S.uonly ? 'Belum ada pengguna yang pernah create.' : 'Tidak ada pengguna yang cocok.'}</div>`; return; }
+    box.innerHTML = S.users.map((u) => {
+      const open = S.uopen.has(u.id), n = Number(u.acts) || 0, un = Number(u.unread) || 0;
+      const nm = u.name || 'Tanpa nama';
+      const initial = (String(nm).match(/[\p{L}\p{N}]/u) || ['?'])[0];
+      const alias = (u.names || []).filter((x) => x !== u.name);
+      const muted = isMuted(u);
+      const tags = [];
+      if (u.is_dev) tags.push('<span class="atag ok">DEVELOPER</span>');
+      if (u.blocked) tags.push(`<span class="atag red">PREMIUM NONAKTIF</span>`);
+      if (muted) tags.push(`<span class="atag warn">DIBISUKAN s/d ${esc(stamp(u.muted_until))}</span>`);
+      if (alias.length) tags.push(`<span class="atag warn" title="${esc((u.names || []).join(', '))}">${(u.names || []).length} nama dipakai</span>`);
+      if (u.ip) tags.push(`<span class="atag">${esc(u.ip)}</span>`);
+      tags.push(`<span class="atag">${esc(uaShort(u.ua))}</span>`);
+      return `<article class="urow${u.blocked ? ' blocked' : ''}${open ? ' open' : ''}">
+        <button class="u-head" data-do="u-toggle" data-id="${u.id}" type="button" aria-expanded="${open}">
+          <span class="u-av">${esc(initial)}</span>
+          <span class="u-tx"><b>${esc(nm)}${u.is_dev ? ' ' + VB : ''}${un ? `<span class="abadge">${un}</span>` : ''}</b><small>${alias.length ? 'Juga: ' + esc(alias.join(', ')) + ' · ' : ''}Aktif ${esc(ago(u.last_seen))}${u.last_act ? ' · create terakhir ' + esc(ago(u.last_act)) : ''}</small></span>
+          <span class="ucount${n >= 5 ? ' hot' : ''}${n === 0 ? ' zero' : ''}"><b>${n}</b><i>× create</i></span>
+          ${I('down', 'chev')}
+        </button>
+        <div class="row-meta u-tags">${tags.join('')}</div>
+        <div class="u-acts${open ? '' : ' hidden'}" data-acts="${u.id}">${actsHtml(u.id)}</div>
+        <div class="u-btns">
+          <button class="ibtn" data-do="chat" data-id="${u.id}" type="button">${I('msg')}Chat</button>
+          ${blockBtn(u.id, u.blocked)}
+          ${u.is_dev ? '' : (muted
+            ? `<button class="ibtn good" data-do="unmute" data-id="${u.id}" type="button">${I('check')}Buka bisu</button>`
+            : `<button class="ibtn warn" data-do="mute" data-id="${u.id}" type="button">${I('lock')}Bisukan</button>`)}
+        </div>
+      </article>`;
+    }).join('');
+  }
+
+  function actsHtml(id) {
+    const a = S.uacts.get(id);
+    if (!a) return '<div class="u-loading">Memuat email…</div>';
+    if (a.err) return `<div class="u-loading">${esc(a.err)}</div>`;
+    if (!a.rows.length) return '<div class="u-loading">Belum ada email yang dicreate.</div>';
+    const all = a.rows.filter((r) => r.email_full).map((r) => r.email_full);
+    return `<div class="u-acts-h"><span>${a.rows.length} email yang dicreate</span>${all.length ? `<button class="ibtn" data-do="copy-all" data-id="${id}" type="button">${I('copy')}Salin semua</button>` : ''}</div>
+      <ol class="u-mails">${a.rows.map((r) => {
+        const full = r.email_full;
+        const shown = full || r.email_masked || '(email tidak tercatat)';
+        return `<li><span class="u-mail${full ? '' : ' old'}">${I('mail', 'ic sm')}<span>${esc(shown)}</span>${full ? '' : '<em>tersamar (data lama)</em>'}</span><time>${esc(stamp(r.created_at))}</time>${full ? `<button class="mini" data-do="copy" data-v="${esc(full)}" type="button" aria-label="Salin email">${I('copy', 'ic sm')}</button>` : ''}</li>`;
+      }).join('')}</ol>`;
+  }
+
+  async function loadUserActs(id) {
+    try {
+      const d = await api('/api/admin/user-acts?id=' + id);
+      S.uacts.set(id, { rows: d.rows || [] });
+    } catch (e) { if (e.message !== 'Sesi berakhir') S.uacts.set(id, { err: e.message, rows: [] }); }
+    const box = $(`[data-acts="${id}"]`);
+    if (box) box.innerHTML = actsHtml(id);
+  }
+
+  async function loadUsers() {
+    try {
+      const d = await api(`/api/admin/users?q=${encodeURIComponent(S.uq)}&sort=${S.usort}&only=${S.uonly ? 1 : 0}`);
+      S.users = d.rows;
+      renderUsers();
+      S.uopen.forEach((id) => { if (!S.uacts.has(id)) loadUserActs(id); });
+      live(true);
+    } catch (e) { if (e.message !== 'Sesi berakhir') { live(false); $('#usr-list').innerHTML = `<div class="adm-empty">${esc(e.message)}</div>`; } }
+  }
+  let uqTimer;
+  $('#usr-q').addEventListener('input', (e) => { clearTimeout(uqTimer); uqTimer = setTimeout(() => { S.uq = e.target.value.trim(); loadUsers(); }, 300); });
+  $('#usr-only').addEventListener('change', (e) => { S.uonly = e.target.checked; loadUsers(); });
+  $('#usr-sort').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-sort]'); if (!b) return;
+    S.usort = b.dataset.sort;
+    $$('#usr-sort button').forEach((x) => x.classList.toggle('on', x === b));
+    loadUsers();
+  });
+
+  /* ---------- tab Komunitas: moderasi room & balasan ---------- */
+  function renderCom() {
+    const box = $('#com-list');
+    $('#com-online').textContent = S.online;
+    if (!S.com.length) { box.innerHTML = `<div class="adm-empty">${S.csub === 'room' ? 'Room masih kosong.' : 'Belum ada balasan ulasan.'}</div>`; return; }
+    box.innerHTML = S.com.map((m) => `<article class="arow com">
+      <div class="row-main">
+        <span class="row-name plain"><span class="t">${esc(m.name)}${m.verified ? ' ' + VB : ''}</span></span>
+        <span class="row-mail com-txt">${esc(m.body)}</span>
+        <div class="row-meta"><span class="atag">${esc(ago(m.created_at))}</span></div>
+      </div>
+      <div class="row-side"><div class="row-act">
+        <button class="ibtn danger" data-do="${S.csub === 'room' ? 'del-room' : 'del-rep'}" data-id="${m.id}" type="button">${I('trash')}Hapus</button>
+        ${m.verified ? '' : `<button class="ibtn warn" data-do="mute" data-id="${esc(m.device_id)}" type="button">${I('lock')}Bisukan</button>`}
+      </div></div>
+    </article>`).join('');
+  }
+  async function loadCom() {
+    try {
+      const d = await api(S.csub === 'room' ? '/api/admin/room' : '/api/admin/replies');
+      S.com = d.rows || [];
+      if (d.online != null) S.online = d.online;
+      renderCom();
+      live(true);
+    } catch (e) { if (e.message !== 'Sesi berakhir') { live(false); $('#com-list').innerHTML = `<div class="adm-empty">${esc(e.message)}</div>`; } }
+  }
+  $('#com-sub').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-sub]'); if (!b) return;
+    S.csub = b.dataset.sub;
+    $$('#com-sub button').forEach((x) => x.classList.toggle('on', x === b));
+    S.com = []; renderCom(); loadCom();
+  });
+
+  async function delCom(kind, id) {
+    const m = S.com.find((x) => String(x.id) === String(id));
+    const ok = await UI.confirm({
+      tone: 'danger', icon: 'trash',
+      title: kind === 'room' ? 'Hapus pesan room?' : 'Hapus balasan ini?',
+      message: 'Akan hilang untuk semua pengguna.',
+      preview: m ? { head: m.name, text: m.body } : undefined,
+      confirmText: 'Hapus', busyText: 'Menghapus…',
+      onConfirm: async () => { await api(kind === 'room' ? '/api/admin/room/delete' : '/api/admin/reply/delete', { method: 'POST', body: { id } }); }
+    });
+    if (!ok) return;
+    S.com = S.com.filter((x) => String(x.id) !== String(id));
+    renderCom();
+    toast('Dihapus');
+  }
+
+  async function doMute(id, name) {
+    const r = await UI.confirm({
+      tone: 'warn', icon: 'alert',
+      title: 'Bisukan pengguna ini?',
+      message: `${name || 'Pengguna ini'} tidak bisa mengirim pesan di room maupun membalas ulasan sampai waktunya habis. Fitur premium & chat admin tidak terpengaruh.`,
+      field: { label: 'Lama dibisukan (menit)', placeholder: '60', maxlength: 5, value: '60' },
+      confirmText: 'Bisukan', busyText: 'Menyimpan…',
+      onConfirm: async (v) => { await api('/api/admin/mute', { method: 'POST', body: { id, minutes: parseInt(v, 10) || 60 } }); }
+    });
+    if (!r) return;
+    toast('Pengguna dibisukan');
+    refreshAll();
+    if (S.tab === 'com') loadCom();
+  }
+  async function doUnmute(id) {
+    try { await api('/api/admin/mute', { method: 'POST', body: { id, minutes: 0 } }); toast('Bisu dibuka'); refreshAll(); }
+    catch (e) { toast(e.message, 'err'); }
+  }
+  async function copyText(t) {
+    try { await navigator.clipboard.writeText(t); toast('Disalin'); }
+    catch { const a = document.createElement('textarea'); a.value = t; document.body.appendChild(a); a.select(); try { document.execCommand('copy'); toast('Disalin'); } catch { toast('Gagal menyalin', 'err'); } a.remove(); }
+  }
 
   /* ---------- tab Aktivasi ---------- */
   function renderActs() {
@@ -421,20 +578,23 @@
 
   /* ---------- blokir / aktifkan fitur premium ---------- */
   function nameOf(id) {
+    const us = S.users.find((r) => r.id === id); if (us && us.name) return us.name;
     const a = S.acts.find((r) => r.device_id === id); if (a) return a.device_name || a.name;
     const d = S.devs.find((r) => r.id === id); if (d) return d.name;
     const t = S.threads.find((r) => r.device_id === id); if (t) return t.name;
     return S.conv && S.conv.id === id && S.conv.device ? S.conv.device.name : '';
   }
   function infoOf(id) {
-    return S.devs.find((r) => r.id === id) || (S.conv && S.conv.id === id && S.conv.device) || S.acts.find((r) => r.device_id === id) || {};
+    return S.users.find((r) => r.id === id) || S.devs.find((r) => r.id === id) || (S.conv && S.conv.id === id && S.conv.device) || S.acts.find((r) => r.device_id === id) || {};
   }
 
   async function refreshAll() {
     loadOverview().catch(() => {});
+    if (S.tab === 'usr') loadUsers();
     if (S.tab === 'act') loadActs(false);
     if (S.tab === 'dev') loadDevs();
     if (S.tab === 'chat') loadThreads();
+    if (S.tab === 'com') loadCom();
     reloadConvInfo();
   }
 
@@ -484,6 +644,16 @@
     if (!el || !S.authed) return;
     const id = el.dataset.id;
     if (el.dataset.do === 'chat') go('#chat/' + id + (el.dataset.aid ? '?act=' + el.dataset.aid : ''));
+    else if (el.dataset.do === 'u-toggle') {
+      if (S.uopen.has(id)) S.uopen.delete(id); else { S.uopen.add(id); if (!S.uacts.has(id)) loadUserActs(id); }
+      renderUsers();
+    }
+    else if (el.dataset.do === 'copy') copyText(el.dataset.v);
+    else if (el.dataset.do === 'copy-all') { const a = S.uacts.get(id); if (a) copyText(a.rows.filter((r) => r.email_full).map((r) => r.email_full).join('\n')); }
+    else if (el.dataset.do === 'mute') doMute(id, nameOf(id));
+    else if (el.dataset.do === 'unmute') doUnmute(id);
+    else if (el.dataset.do === 'del-room') delCom('room', id);
+    else if (el.dataset.do === 'del-rep') delCom('rep', id);
     else if (el.dataset.do === 'block') doBlock(id);
     else if (el.dataset.do === 'unblock') doUnblock(id);
   });
@@ -492,9 +662,11 @@
   function poll() {
     if (document.hidden) return;
     loadOverview().then(() => live(true)).catch((e) => { if (e.message !== 'Sesi berakhir') live(false); });
-    if (S.tab === 'act') loadActs(false);
+    if (S.tab === 'usr') loadUsers();
+    else if (S.tab === 'act') loadActs(false);
     else if (S.tab === 'dev') loadDevs();
     else if (S.tab === 'chat') loadThreads();
+    else if (S.tab === 'com') loadCom();
   }
 
   function enter() {
