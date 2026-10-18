@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="/reviews.css">
   <link rel="stylesheet" href="/ui.css">
   <link rel="stylesheet" href="/chat.css">
+  <link rel="stylesheet" href="/community.css">
   <script>
     (function(){try{
       var a=JSON.parse(localStorage.getItem('am_accent')||'null'); if(a) document.documentElement.setAttribute('data-accent',a);
@@ -75,6 +76,9 @@
     <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
     <symbol id="i-msg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+    <symbol id="i-reply" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L21 2M16 7l3 3M14 9l2 2"/></symbol>
   </defs>
 </svg>
 
@@ -97,6 +101,14 @@
           <svg class="ic"><use href="#i-user"/></svg>
           <input id="w-name" class="input" maxlength="20" placeholder="Contoh: Budi" autocomplete="off" autocapitalize="words" enterkeyhint="go" spellcheck="false">
           <span class="w-count" id="w-count">0/20</span>
+        </div>
+        <div class="w-pass hidden" id="w-pass-box">
+          <label class="kicker" for="w-pass">KATA SANDI DEVELOPER</label>
+          <div class="field w-field" id="w-pass-field">
+            <svg class="ic"><use href="#i-key"/></svg>
+            <input id="w-pass" class="input" type="password" maxlength="200" placeholder="Sama dengan kata sandi /admin" autocomplete="current-password" spellcheck="false">
+          </div>
+          <p class="w-hint">Nama ini khusus developer. Cukup sekali: perangkat ini akan diingat sebagai developer (centang biru).</p>
         </div>
         <p class="w-err" id="w-err" role="alert"></p>
         <div class="w-preview" id="w-prev" aria-hidden="true"><span>Tampilan sapaan</span><b>Halo, <em id="w-prev-name">...</em>!</b></div>
@@ -141,6 +153,7 @@
       <a class="tab" href="/premium" data-tab="premium" role="tab"><svg class="ic"><use href="#i-shield"/></svg><span>Premiumkan</span></a>
       <a class="tab" href="/panduan" data-tab="guide" role="tab"><svg class="ic"><use href="#i-book"/></svg><span>Panduan</span></a>
       <a class="tab" href="/rating" data-tab="reviews" role="tab"><svg class="ic"><use href="#i-star"/></svg><span>Rating</span></a>
+      <a class="tab" href="/room" data-tab="room" role="tab"><svg class="ic"><use href="#i-users"/></svg><span>Room</span></a>
     </nav>
     <div class="top-actions">
       <button class="srch-btn" id="cmd-open" type="button" aria-label="Buka perintah cepat" aria-haspopup="dialog"><svg class="ic"><use href="#i-search"/></svg><span>Cari fitur…</span><kbd>Ctrl K</kbd></button>
@@ -465,6 +478,32 @@
     </div>
   </section>
 
+  <!-- ROOM PUBLIK -->
+  <section class="view hidden" data-view="room" id="room-view">
+    <div class="card head-card rm-head">
+      <span class="kicker">KOMUNITAS</span>
+      <h2>Room publik</h2>
+      <p>Tempat semua pengguna AM Premify saling berkenalan dan ngobrol. Pesan tampil real-time.</p>
+      <span class="live-badge wait" id="rm-live"><i></i><b>MENYAMBUNG</b></span>
+    </div>
+    <div class="card rm-card">
+      <div class="rm-bar">
+        <span class="rm-online"><i></i><b id="rm-online">0</b> online</span>
+        <span class="rm-rules">Sopan, tanpa spam, dilarang jual beli akun. Jangan bagikan email atau kata sandi.</span>
+      </div>
+      <div class="rm-body" id="rm-body" role="log" aria-live="polite" aria-label="Percakapan room publik"></div>
+      <button class="chat-new hidden" id="rm-new" type="button"><svg class="ic sm"><use href="#i-down"/></svg>Pesan baru</button>
+      <div class="rm-foot">
+        <div class="rm-reto hidden" id="rm-reto"><span></span><button type="button" id="rm-reto-x" aria-label="Batal membalas"><svg class="ic sm"><use href="#i-x"/></svg></button></div>
+        <p class="chat-err" id="rm-err" role="alert"></p>
+        <form class="rm-form" id="rm-form" autocomplete="off">
+          <textarea class="chat-in" id="rm-in" rows="1" maxlength="300" placeholder="Tulis pesan untuk semua orang…" aria-label="Tulis pesan"></textarea>
+          <button class="chat-send" id="rm-send" type="submit" aria-label="Kirim" disabled><svg class="ic"><use href="#i-send"/></svg></button>
+        </form>
+      </div>
+    </div>
+  </section>
+
   <!-- BIODATA DEVELOPER -->
   <section class="view hidden bio" data-view="bio">
     <div class="bio-top">
@@ -679,6 +718,7 @@
   <a class="dock-i dock-main" href="/premium" data-tab="premium"><span class="dock-ic"><svg class="ic"><use href="#i-crown"/></svg></span><span class="dock-t">Premium</span></a>
   <a class="dock-i" href="/panduan" data-tab="guide"><span class="dock-ic"><svg class="ic"><use href="#i-book"/></svg></span><span class="dock-t">Panduan</span></a>
   <a class="dock-i" href="/rating" data-tab="reviews"><span class="dock-ic"><svg class="ic"><use href="#i-star"/></svg></span><span class="dock-t">Rating</span></a>
+  <a class="dock-i" href="/room" data-tab="room"><span class="dock-ic"><svg class="ic"><use href="#i-users"/></svg></span><span class="dock-t">Room</span></a>
   <button class="dock-i" id="dock-menu" type="button" aria-haspopup="dialog"><span class="dock-ic"><svg class="ic"><use href="#i-menu"/></svg></span><span class="dock-t">Menu</span></button>
 </nav>
 
@@ -731,5 +771,7 @@
 <script src="/app.js"></script>
 <script src="/reviews.js"></script>
 <script src="/chat.js"></script>
+<script src="/social.js"></script>
+<script src="/room.js"></script>
 </body>
 </html>
