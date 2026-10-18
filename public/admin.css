@@ -122,3 +122,47 @@
   .adm-brand small { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .arow { animation: none; } }
+
+/* ===== v4.5: tab Pengguna (nama + jumlah create) & Komunitas ===== */
+.usr-bar { display: flex; flex-direction: column; gap: 10px; }
+.seg { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.seg button { padding: 7px 13px; background: var(--paper); color: var(--ink); border: 2.5px solid var(--ink); border-radius: 999px; box-shadow: 2px 2px 0 var(--ink); font: 700 .74rem var(--mono); cursor: pointer; transition: transform .12s, box-shadow .12s; }
+.seg button.on { background: var(--ink); color: var(--yellow); }
+.seg button:active { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--ink); }
+.chk { display: inline-flex; align-items: center; gap: 8px; font: 700 .76rem var(--mono); cursor: pointer; }
+.chk input { width: 18px; height: 18px; accent-color: var(--ink); }
+
+.urow { background: var(--paper); border: var(--bd); border-radius: 14px; box-shadow: var(--sh-s); overflow: hidden; }
+.urow.blocked { background: #fff0ef; }
+.u-head { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: transparent; border: 0; text-align: left; cursor: pointer; font-family: inherit; color: inherit; }
+.u-head:hover { background: rgba(255, 210, 63, .25); }
+.u-av { flex-shrink: 0; width: 42px; height: 42px; display: grid; place-items: center; background: var(--yellow); border: var(--bd); border-radius: 12px; box-shadow: 2px 2px 0 var(--ink); font-family: var(--display); font-size: 1.1rem; text-transform: uppercase; }
+.u-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.u-tx b { display: flex; align-items: center; gap: 6px; font-size: 1.05rem; overflow-wrap: anywhere; }
+.u-tx small { font: 600 .72rem var(--mono); color: #5a5648; overflow-wrap: anywhere; }
+.ucount { flex-shrink: 0; display: inline-flex; align-items: baseline; gap: 4px; padding: 4px 12px; background: var(--mint); border: var(--bd); border-radius: 999px; box-shadow: 2px 2px 0 var(--ink); font-family: var(--mono); white-space: nowrap; }
+.ucount b { font-family: var(--display); font-weight: 400; font-size: 1.25rem; line-height: 1; }
+.ucount i { font-style: normal; font-size: .72rem; font-weight: 700; }
+.ucount.hot { background: #ff8f8f; }
+.ucount.zero { background: #ece7d8; }
+.u-head .chev { transition: transform .2s; }
+.urow.open .u-head .chev { transform: rotate(180deg); }
+.u-tags { padding: 0 14px 10px; }
+.u-acts { margin: 0 14px 12px; padding: 10px 12px; background: var(--bg); border: 2.5px solid var(--ink); border-left-width: 6px; border-radius: 12px; }
+.u-acts-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; font: 700 .74rem var(--mono); }
+.u-loading { font: 600 .8rem var(--mono); color: #5a5648; }
+.u-mails { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.u-mails li { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 7px 10px; background: var(--paper); border: 2px solid var(--ink); border-radius: 10px; }
+.u-mail { flex: 1; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; font: 700 .76rem var(--mono); overflow-wrap: break-word; word-break: break-all; }
+.u-mail em { font-style: normal; font-size: .62rem; padding: 0 7px; background: #ffe9a8; border: 1.5px solid var(--ink); border-radius: 999px; }
+.u-mails time { flex-shrink: 0; font: 600 .66rem var(--mono); color: #5a5648; }
+.u-mails .mini { flex-shrink: 0; width: 30px; height: 30px; display: grid; place-items: center; background: var(--paper); border: 2px solid var(--ink); border-radius: 8px; cursor: pointer; }
+.u-mails .mini:hover { background: var(--yellow); }
+.u-btns { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 14px 14px; }
+.ibtn.warn { background: #ffe9a8; }
+.com-txt { white-space: pre-wrap; overflow-wrap: anywhere; font-weight: 600; }
+@media (max-width: 520px) {
+  .u-head { flex-wrap: wrap; }
+  .u-tx { flex-basis: calc(100% - 60px); }
+  .ucount { margin-left: 54px; }
+}
