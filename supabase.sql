@@ -378,3 +378,130 @@ drop trigger if exists am_reviews_name_guard on public.reviews;
 create trigger am_reviews_name_guard
   before insert or update of name on public.reviews
   for each row execute function public.am_reviews_name_guard();
+
+-- =====================================================================
+-- v4.5 - BALASAN & LIKE ULASAN, ROOM PUBLIK, KONTROL ADMIN PER PENGGUNA
+-- Aman dijalankan berulang kali. Semua tabel baru PRIVAT (hanya server/service_role).
+-- =====================================================================
+
+-- 22) Email lengkap per aktivasi (privat, hanya admin yang bisa melihat lewat server)
+alter table public.am_act_owner add column if not exists email text;
+
+-- 23) Bisukan pengguna di balasan & room (null = tidak dibisukan)
+alter table public.am_devices add column if not exists muted_until timestamptz;
+
+-- 24) Balasan ulasan (identitas = perangkat; nama + centang developer disimpan oleh server)
+create table if not exists public.am_review_replies (
+  id         bigint generated always as identity primary key,
+  review_id  uuid        not null references public.reviews(id) on delete cascade,
+  device_id  text        not null references public.am_devices(id) on delete cascade,
+  name       text        not null check (char_length(btrim(name)) between 2 and 20),
+  verified   boolean     not null default false,
+  to_name    text        check (to_name is null or char_length(to_name) <= 20),
+  body       text        not null check (char_length(body) between 1 and 400),
+  hidden     boolean     not null default false,
+  created_at timestamptz not null default now()
+);
+create index if not exists am_replies_review_idx on public.am_review_replies (review_id, id);
+create index if not exists am_replies_recent_idx on public.am_review_replies (id desc);
+
+-- 25) Like (kind: r = ulasan, p = balasan). Satu perangkat = satu like per target.
+create table if not exists public.am_likes (
+  kind       text        not null check (kind in ('r', 'p')),
+  target     text        not null check (char_length(target) <= 40),
+  device_id  text        not null references public.am_devices(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (kind, target, device_id)
+);
+create index if not exists am_likes_target_idx on public.am_likes (kind, target);
+
+-- 26) Room publik
+create table if not exists public.am_room (
+  id          bigint generated always as identity primary key,
+  device_id   text        not null references public.am_devices(id) on delete cascade,
+  name        text        not null check (char_length(btrim(name)) between 2 and 20),
+  verified    boolean     not null default false,
+  body        text        not null check (char_length(body) between 1 and 300),
+  reply_id    bigint,
+  reply_name  text,
+  reply_body  text,
+  created_at  timestamptz not null default now()
+);
+create index if not exists am_room_recent_idx on public.am_room (id desc);
+
+alter table public.am_review_replies enable row level security;
+alter table public.am_likes          enable row level security;
+alter table public.am_room           enable row level security;
+revoke all on public.am_review_replies, public.am_likes, public.am_room from anon, authenticated;
+
+-- 27) Ringkasan balasan + like untuk banyak ulasan sekaligus
+create or replace function public.am_review_social(ids uuid[], me text default null)
+returns table(review_id uuid, replies bigint, likes bigint, liked boolean)
+language sql stable security definer set search_path = public as $$
+  select i.rid,
+         (select count(*) from am_review_replies r where r.review_id = i.rid and not r.hidden),
+         (select count(*) from am_likes l where l.kind = 'r' and l.target = i.rid::text),
+         exists (select 1 from am_likes l where l.kind = 'r' and l.target = i.rid::text and l.device_id = me)
+  from unnest(ids) as i(rid);
+$$;
+
+-- 28) Daftar balasan satu ulasan (dengan jumlah like)
+create or replace function public.am_replies_list(rid uuid, me text default null, lim int default 200)
+returns table(id bigint, name text, verified boolean, to_name text, body text, created_at timestamptz,
+              likes bigint, liked boolean, mine boolean)
+language sql stable security definer set search_path = public as $$
+  select r.id, r.name, r.verified, r.to_name, r.body, r.created_at,
+         (select count(*) from am_likes l where l.kind = 'p' and l.target = r.id::text),
+         exists (select 1 from am_likes l where l.kind = 'p' and l.target = r.id::text and l.device_id = me),
+         (r.device_id = me)
+  from am_review_replies r
+  where r.review_id = rid and not r.hidden
+  order by r.id asc
+  limit least(greatest(lim, 1), 300);
+$$;
+
+-- 29) Menu admin: daftar pengguna (per perangkat) + jumlah create
+create or replace function public.am_users_admin(q text default null, only_acts boolean default true,
+                                                 sort text default 'acts', lim int default 80)
+returns table(id text, name text, names text[], is_dev boolean, blocked boolean, muted_until timestamptz,
+              ip text, ua text, first_seen timestamptz, last_seen timestamptz,
+              acts bigint, last_act timestamptz, unread bigint)
+language sql stable security definer set search_path = public as $$
+  select * from (
+    select d.id, d.name, d.names, d.is_dev, d.blocked, d.muted_until, d.ip, d.ua, d.first_seen, d.last_seen,
+           (select count(*) from am_act_owner o where o.device_id = d.id) as acts,
+           (select max(o.created_at) from am_act_owner o where o.device_id = d.id) as last_act,
+           (select count(*) from am_chat c where c.device_id = d.id and c.sender = 'user' and c.read_at is null) as unread
+    from am_devices d
+    where coalesce(q, '') = ''
+       or d.name ilike '%' || q || '%'
+       or d.ip ilike '%' || q || '%'
+       or exists (select 1 from unnest(d.names) n where n ilike '%' || q || '%')
+       or exists (select 1 from am_act_owner o where o.device_id = d.id and o.email ilike '%' || q || '%')
+  ) u
+  where (not only_acts) or u.acts > 0
+  order by (case when sort = 'acts' then u.acts end) desc nulls last,
+           coalesce(u.last_act, u.last_seen) desc
+  limit least(greatest(lim, 1), 300);
+$$;
+
+-- 30) Menu admin: email apa saja yang dibuat satu pengguna
+create or replace function public.am_user_acts(dev text, lim int default 100)
+returns table(id bigint, created_at timestamptz, email_full text, email_masked text)
+language sql stable security definer set search_path = public as $$
+  select o.activation_id, o.created_at, o.email, a.email
+  from am_act_owner o
+  left join activations a on a.id = o.activation_id
+  where o.device_id = dev
+  order by o.activation_id desc
+  limit least(greatest(lim, 1), 300);
+$$;
+
+revoke all on function public.am_review_social(uuid[], text) from public, anon, authenticated;
+revoke all on function public.am_replies_list(uuid, text, int) from public, anon, authenticated;
+revoke all on function public.am_users_admin(text, boolean, text, int) from public, anon, authenticated;
+revoke all on function public.am_user_acts(text, int) from public, anon, authenticated;
+grant execute on function public.am_review_social(uuid[], text) to service_role;
+grant execute on function public.am_replies_list(uuid, text, int) to service_role;
+grant execute on function public.am_users_admin(text, boolean, text, int) to service_role;
+grant execute on function public.am_user_acts(text, int) to service_role;
