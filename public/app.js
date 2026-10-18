@@ -23,9 +23,9 @@ function toast(msg, type = '') {
 }
 
 /* Navigasi (URL bersih tanpa .html: /index, /premium, /panduan) */
-const ROUTES = { home: '/index', premium: '/premium', guide: '/panduan', reviews: '/rating', bio: '/biodata' };
-const TITLES = { home: 'Dashboard', premium: 'Premiumkan Akun', guide: 'Panduan', reviews: 'Rating & Ulasan', bio: 'Biodata Developer' };
-const VIEW_BY_PATH = { '/': 'home', '/index': 'home', '/premium': 'premium', '/panduan': 'guide', '/rating': 'reviews', '/ulasan': 'reviews', '/bukti': 'reviews', '/biodata': 'bio' };
+const ROUTES = { home: '/index', premium: '/premium', guide: '/panduan', reviews: '/rating', room: '/room', bio: '/biodata' };
+const TITLES = { home: 'Dashboard', premium: 'Premiumkan Akun', guide: 'Panduan', reviews: 'Rating & Ulasan', room: 'Room Publik', bio: 'Biodata Developer' };
+const VIEW_BY_PATH = { '/': 'home', '/index': 'home', '/premium': 'premium', '/panduan': 'guide', '/rating': 'reviews', '/ulasan': 'reviews', '/bukti': 'reviews', '/room': 'room', '/biodata': 'bio' };
 
 function show(view, push = true) {
   $$('.view').forEach((v) => v.classList.toggle('hidden', v.dataset.view !== view));
@@ -936,6 +936,7 @@ const welcome = {
     this.card.classList.remove('hidden'); this.hello.classList.add('hidden');
     document.body.classList.add('no-scroll');
     this.input.value = edit ? cur : '';
+    $('#w-pass-box').classList.add('hidden'); $('#w-pass').value = '';
     $('#w-cancel').classList.toggle('hidden', !edit);
     $('#w-go span').textContent = edit ? 'Simpan Nama' : 'Mulai Sekarang';
     $('#w-sub').textContent = edit
@@ -964,9 +965,17 @@ const welcome = {
     const err = validateName(name);
     if (err) return this.fail(err);
     this.busy = true;
-    // Nama dicadangkan (kenz) dicek ke server: hanya perangkat developer yang lolos
-    const chk = await Device.checkName(name);
-    if (!chk.ok) { this.busy = false; return this.fail(chk.error); }
+    // Nama dicadangkan (kenz) dicek ke server: hanya perangkat developer yang lolos; perangkat baru memasukkan kata sandi developer
+    const passBox = $('#w-pass-box');
+    const pass = passBox.classList.contains('hidden') ? '' : $('#w-pass').value;
+    const chk = await Device.checkName(name, pass);
+    if (!chk.ok) {
+      this.busy = false;
+      if (chk.needPass) passBox.classList.remove('hidden');
+      this.fail(chk.error);
+      if (chk.needPass) $('#w-pass').focus();
+      return;
+    }
     store.set('am_user', name);
     applyUser(); renderMini();
     window.dispatchEvent(new Event('am:namechange'));
@@ -996,7 +1005,10 @@ const welcome = {
     if (!this.edit) { showWarnIfNeeded(); channelPop.request(700); }
   },
   init() {
-    this.input.addEventListener('input', () => { this.sync(); $('#w-err').textContent = ''; $('#w-field').classList.remove('err'); });
+    this.input.addEventListener('input', () => {
+      this.sync(); $('#w-err').textContent = ''; $('#w-field').classList.remove('err');
+      if (!isDevName(this.input.value)) $('#w-pass-box').classList.add('hidden');
+    });
     this.form.addEventListener('submit', (e) => { e.preventDefault(); this.submit(); });
     $('#w-cancel').addEventListener('click', () => {
       if (this.busy) return;
@@ -1083,6 +1095,7 @@ const cmd = {
       { g: 'NAVIGASI', t: 'Biodata Developer', d: 'Kenali pembuat website ini', i: 'user', k: 'biodata developer kenz profil', run: go('bio') },
       { g: 'NAVIGASI', t: 'Rating & Ulasan', d: 'Rating keseluruhan dari pengguna', i: 'star', k: 'rating ulasan bintang review nilai', run: () => (window.Reviews ? Reviews.go('rating') : show('reviews')) },
       { g: 'NAVIGASI', t: 'Bukti Sukses', d: 'Screenshot akun premium dari pengguna', i: 'image', k: 'bukti sukses screenshot akun testimoni', run: () => (window.Reviews ? Reviews.go('bukti') : show('reviews')) },
+      { g: 'NAVIGASI', t: 'Room Publik', d: 'Ngobrol & kenalan dengan pengguna lain', i: 'users', k: 'room publik chat ngobrol kenalan teman komunitas grup', run: go('room') },
       { g: 'AKSI', t: 'Beri rating', d: 'Nilai AM Premify dengan bintang 1-5', i: 'star', k: 'beri rating bintang nilai ulasan tulis', run: () => window.Reviews && Reviews.openRate() },
       { g: 'AKSI', t: 'Tempel link dari clipboard', d: 'Buka halaman Premiumkan lalu tempel', i: 'link', k: 'tempel paste link magic', run: () => { show('premium'); setTimeout(() => $('#paste-btn').click(), 350); } },
       { g: 'AKSI', t: 'Chat admin', d: 'Tanya admin langsung di website ini', i: 'msg', k: 'chat admin pesan tanya bantuan balas', run: () => window.dispatchEvent(new Event('am:open-chat')) },
