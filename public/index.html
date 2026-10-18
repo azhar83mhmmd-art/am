@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="/ui.css">
   <link rel="stylesheet" href="/chat.css">
   <link rel="stylesheet" href="/community.css">
+  <link rel="stylesheet" href="/responsive.css">
   <script>
     (function(){try{
       var a=JSON.parse(localStorage.getItem('am_accent')||'null'); if(a) document.documentElement.setAttribute('data-accent',a);
@@ -590,6 +591,30 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-wa-fill"/></svg><span>Ikuti Saluran Sekarang</span><svg class="ic"><use href="#i-arrow"/></svg>
       </a>
       <button class="link-btn ch-later" id="ch-later" type="button" data-ch-close>Nanti saja</button>
+    </div>
+  </div>
+</div>
+
+<!-- POPUP DONASI (muncul setelah popup saluran ditutup) -->
+<div id="dn-pop" class="ch-pop dn-pop hidden" role="dialog" aria-modal="true" aria-labelledby="dn-title">
+  <div class="ch-back" data-dn-close></div>
+  <div class="ch-card" id="dn-card">
+    <div class="modal-stripe"></div>
+    <button class="ch-x" type="button" data-dn-close aria-label="Tutup"><svg class="ic"><use href="#i-fail"/></svg></button>
+    <div class="ch-body">
+      <div class="ch-ico"><span class="ch-ring"></span><span class="ch-ring r2"></span><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-heart"/></svg></div>
+      <span class="ch-k">DUKUNG DEVELOPER &bull; SEIKHLASNYA</span>
+      <h3 id="dn-title" class="ch-title">Traktir <span class="nb"><mark>kenz</mark></span> yuk!</h3>
+      <p class="ch-sub">AM Premify gratis dipakai dan dikelola sendirian. Dukunganmu bantu website ini tetap online dan terus berkembang.</p>
+      <ul class="ch-list">
+        <li style="--i:0"><svg class="ic sm"><use href="#i-check"/></svg>Bantu biaya server &amp; database</li>
+        <li style="--i:1"><svg class="ic sm"><use href="#i-check"/></svg>Fitur baru bisa hadir lebih cepat</li>
+        <li style="--i:2"><svg class="ic sm"><use href="#i-check"/></svg>Nominal bebas, tanpa paksaan</li>
+      </ul>
+      <a class="btn ch-go" id="dn-go" href="https://sociabuzz.com/kenzchillz/tribe" target="_blank" rel="noopener noreferrer">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-heart"/></svg><span>Donasi via Sociabuzz</span><svg class="ic"><use href="#i-arrow"/></svg>
+      </a>
+      <button class="link-btn ch-later" id="dn-later" type="button" data-dn-close>Mungkin lain kali</button>
     </div>
   </div>
 </div>
