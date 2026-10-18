@@ -42,3 +42,10 @@ v4.5 - Balasan ulasan, like, room publik, kontrol admin per pengguna, perbaikan 
 - Email lengkap kini disimpan di tabel privat am_act_owner (hanya server/admin). Aktivasi lama hanya punya email tersamar, jadi tampil bertanda "tersamar (data lama)"
 - Nama "kenz": tidak perlu login /admin dulu. Ketik kenz di layar nama, kolom KATA SANDI DEVELOPER muncul, isi sama dengan ADMIN_PASSWORD. Perangkat itu jadi developer permanen (hanya 1 perangkat)
 - WAJIB: jalankan ulang supabase.sql (bagian v4.5) lalu restart server
+
+## v4.6
+- Perbaikan responsif: topbar tablet/laptop satu baris (public/responsive.css), aman di HP kecil, landscape, dan layar lebar.
+- Popup donasi Sociabuzz (muncul setelah popup saluran WhatsApp ditutup; juga bisa dibuka dari Ctrl+K "Dukung developer").
+
+## v4.7
+- Popup donasi muncul setiap masuk dan muncul lagi tiap 4 menit setelah ditutup (atur di app.js: donatePop.EVERY).
