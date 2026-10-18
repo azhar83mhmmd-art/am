@@ -1233,6 +1233,15 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const { pathname, search } = url;
 
+  // ===== Website pindah domain: semua layanan dihentikan =====
+  const NEW_SITE = 'https://premifyy.kairoo.my.id/';
+  if (pathname.startsWith('/api/') || pathname === '/config.js') {
+    return sendJson(res, 410, { error: 'Website ini sudah pindah dan tidak bisa digunakan lagi.', newUrl: NEW_SITE });
+  }
+  if (!path.extname(pathname)) {
+    return serveFile(res, '/index.html', null, { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow' });
+  }
+
   try {
     if (req.method === 'POST') {
       if (pathname === '/api/send-link' || pathname === '/api/verify-link') return await proxyUpstream(req, res, pathname);
