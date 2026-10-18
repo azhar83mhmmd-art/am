@@ -47,7 +47,7 @@ const PUBLIC_DIR = fs.existsSync(path.join(__dirname, 'public'))
 const BLOCKED = ['server.js', 'package.json', 'package-lock.json', 'vercel.json', 'supabase.sql'];
 
 // URL bersih (tanpa .html) -> semuanya dilayani oleh index.html
-const PAGES = new Set(['/', '/index', '/premium', '/panduan', '/rating', '/ulasan', '/bukti', '/biodata']);
+const PAGES = new Set(['/', '/index', '/premium', '/panduan', '/rating', '/ulasan', '/bukti', '/biodata', '/room']);
 const ADMIN_PAGE = '/admin';
 
 const MIME = {
@@ -363,6 +363,11 @@ function cleanEmail(v) {
   return u.length > 5 ? u.slice(0, 5) + '***@' + d : e;
 }
 
+function fullEmail(v) {
+  const e = String(v || '').trim().toLowerCase();
+  return e.length <= 254 && /^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/.test(e) ? e : '';
+}
+
 async function insertActivation(row) {
   return fetch(`${SUPABASE_URL}/rest/v1/activations`, {
     method: 'POST',
@@ -396,7 +401,11 @@ async function recordActivation(email, dev, ident) {
     }
     if (!r || !r.ok) { console.warn('[AM Premify] Supabase insert gagal:', r && r.status); return false; }
     if (created && created.id && dev) {
-      await sb('POST', rest('am_act_owner'), { activation_id: created.id, device_id: dev.id, ip: ident ? ident.ip || null : null }, MIN);
+      const owner = { activation_id: created.id, device_id: dev.id, ip: ident ? ident.ip || null : null };
+      const full = fullEmail(email);
+      // v4.5: email lengkap disimpan di tabel privat (hanya admin yang bisa melihat). Jika kolom belum ada, simpan tanpa email.
+      const o = await sb('POST', rest('am_act_owner'), full ? Object.assign({ email: full }, owner) : owner, MIN);
+      if (!o.ok && full) await sb('POST', rest('am_act_owner'), owner, MIN);
     }
     return true;
   } catch (err) {
@@ -623,10 +632,20 @@ async function handleMe(req, res) {
 }
 
 // Dicek saat pengguna memilih nama (layar sambutan). Nama dicadangkan hanya lolos untuk developer.
+// v4.5: developer cukup mengetik nama "kenz" + kata sandi admin di layar yang sama (tanpa harus login /admin dulu).
+const devPassFails = new Map(); // ip -> { n, until }
+function devPassWait(ip) { const f = devPassFails.get(ip); return f && f.until > Date.now() ? f.until - Date.now() : 0; }
+function devPassFail(ip) {
+  const f = devPassFails.get(ip) || { n: 0, until: 0 };
+  if (f.until && f.until <= Date.now()) { f.n = 0; f.until = 0; }
+  if (++f.n >= 5) { f.until = Date.now() + 15 * 60000; f.n = 0; }
+  devPassFails.set(ip, f);
+  if (devPassFails.size > 5000) devPassFails.clear();
+}
 async function handleName(req, res) {
   if (!sameOrigin(req)) return sendJson(res, 403, { error: 'Permintaan ditolak.' });
   if (rl('name:' + clientIp(req), 30, 60000)) return sendJson(res, 429, { error: 'Terlalu banyak percobaan. Tunggu sebentar.' });
-  const body = await readJson(req, 1024);
+  const body = await readJson(req, 2048);
   if (!body) return sendJson(res, 413, { error: 'Permintaan terlalu besar.' });
   const ident = identify(req);
   setIdentHeaders(req, res, ident);
@@ -640,8 +659,24 @@ async function handleName(req, res) {
     if (SB_READY) { const d = await touchDevice(ident, nm); if (!d || !d.is_dev) return sendJson(res, 502, { error: 'Gagal menyimpan status developer.' }); }
     return sendJson(res, 200, { ok: true, dev: true });
   }
-  console.warn('[AM Premify] Percobaan memakai nama dicadangkan dari ' + ident.ip);
-  sendJson(res, 409, { error: RESERVED_MSG, reserved: true });
+  const pass = typeof body.pass === 'string' ? body.pass : '';
+  if (!ADMIN_PASSWORD) return sendJson(res, 409, { error: RESERVED_MSG + ' (Pemilik: isi ADMIN_PASSWORD di .env agar developer bisa membuktikan diri.)', reserved: true });
+  if (!pass) return sendJson(res, 409, { error: 'Nama ini khusus developer. Masukkan kata sandi developer (sama dengan kata sandi /admin) untuk memakainya.', reserved: true, needPass: true });
+  const wait = devPassWait(ident.ip);
+  if (wait > 0) return sendJson(res, 429, { error: `Terlalu banyak percobaan. Coba lagi ${Math.ceil(wait / 60000)} menit lagi.`, reserved: true, needPass: true });
+  if (!safeEq(sha(pass), sha(ADMIN_PASSWORD))) {
+    devPassFail(ident.ip);
+    console.warn('[AM Premify] Kata sandi developer SALAH dari ' + ident.ip);
+    await sleepMs(500 + Math.floor(Math.random() * 400));
+    return sendJson(res, 401, { error: 'Kata sandi developer salah.', reserved: true, needPass: true });
+  }
+  devPassFails.delete(ident.ip);
+  if (SB_READY) {
+    const d = await touchDevice(Object.assign({}, ident, { admin: true }), nm);
+    if (!d || !d.is_dev) return sendJson(res, 502, { error: 'Gagal menyimpan status developer.' });
+  }
+  console.log('[AM Premify] Perangkat developer diverifikasi lewat kata sandi dari ' + ident.ip);
+  return sendJson(res, 200, { ok: true, dev: true });
 }
 
 // Developer menautkan identitas anonim Supabase-nya supaya ulasan bernama "kenz" diizinkan oleh database
@@ -913,7 +948,265 @@ async function adminApi(req, res, url, pathname) {
     return sendJson(res, 200, { ok: true });
   }
 
+
+  /* ---------- v4.5: pengguna, moderasi room & balasan ---------- */
+  if (pathname === '/api/admin/users' && method === 'GET') {
+    const q = String(url.searchParams.get('q') || '').slice(0, 40).replace(/[%_\\]/g, '');
+    const only = url.searchParams.get('only') !== '0';
+    const sort = url.searchParams.get('sort') === 'recent' ? 'recent' : 'acts';
+    const r = await sb('POST', rest('rpc/am_users_admin'), { q, only_acts: only, sort, lim: 120 });
+    if (!r.ok) return sendJson(res, 502, { error: 'Gagal memuat pengguna. Sudah menjalankan supabase.sql v4.5?' });
+    return sendJson(res, 200, { rows: r.data || [] });
+  }
+
+  if (pathname === '/api/admin/user-acts' && method === 'GET') {
+    const id = String(url.searchParams.get('id') || '');
+    if (!HEX32.test(id)) return sendJson(res, 400, { error: 'ID perangkat tidak valid.' });
+    const r = await sb('POST', rest('rpc/am_user_acts'), { dev: id, lim: 200 });
+    if (!r.ok) return sendJson(res, 502, { error: 'Gagal memuat email. Sudah menjalankan supabase.sql v4.5?' });
+    return sendJson(res, 200, { rows: r.data || [] });
+  }
+
+  if (pathname === '/api/admin/room' && method === 'GET') {
+    const r = await sb('GET', rest('am_room?select=id,device_id,name,verified,body,created_at&order=id.desc&limit=80'));
+    if (!r.ok) return sendJson(res, 502, { error: 'Gagal memuat room. Sudah menjalankan supabase.sql v4.5?' });
+    return sendJson(res, 200, { rows: r.data || [], online: roomOnline() });
+  }
+
+  if (pathname === '/api/admin/room/delete' && method === 'POST') {
+    const body = await readJson(req, 512);
+    const id = String((body && body.id) || '');
+    if (!/^\d{1,18}$/.test(id)) return sendJson(res, 400, { error: 'ID tidak valid.' });
+    await sb('DELETE', rest(`am_room?id=eq.${id}`), undefined, MIN);
+    noteRoomDeleted(id);
+    return sendJson(res, 200, { ok: true });
+  }
+
+  if (pathname === '/api/admin/replies' && method === 'GET') {
+    const r = await sb('GET', rest('am_review_replies?select=id,review_id,device_id,name,verified,body,created_at&order=id.desc&limit=80'));
+    if (!r.ok) return sendJson(res, 502, { error: 'Gagal memuat balasan. Sudah menjalankan supabase.sql v4.5?' });
+    return sendJson(res, 200, { rows: r.data || [] });
+  }
+
+  if (pathname === '/api/admin/reply/delete' && method === 'POST') {
+    const body = await readJson(req, 512);
+    const id = String((body && body.id) || '');
+    if (!/^\d{1,18}$/.test(id)) return sendJson(res, 400, { error: 'ID tidak valid.' });
+    await sb('DELETE', rest(`am_review_replies?id=eq.${id}`), undefined, MIN);
+    await sb('DELETE', rest(`am_likes?kind=eq.p&target=eq.${id}`), undefined, MIN);
+    return sendJson(res, 200, { ok: true });
+  }
+
+  if (pathname === '/api/admin/mute' && method === 'POST') {
+    const body = await readJson(req, 512);
+    if (!body || !HEX32.test(String(body.id || ''))) return sendJson(res, 400, { error: 'ID perangkat tidak valid.' });
+    const dev = await getDevice(body.id);
+    if (!dev) return sendJson(res, 404, { error: 'Perangkat tidak ditemukan.' });
+    if (dev.is_dev) return sendJson(res, 400, { error: 'Developer tidak bisa dibisukan.' });
+    const minutes = Math.max(0, Math.min(60 * 24 * 30, Math.floor(Number(body.minutes) || 0)));
+    const until = minutes ? new Date(Date.now() + minutes * 60000).toISOString() : null;
+    const r = await sb('PATCH', rest(`am_devices?id=eq.${dev.id}`), { muted_until: until }, MIN);
+    if (!r.ok) return sendJson(res, 502, { error: 'Gagal menyimpan. Sudah menjalankan supabase.sql v4.5?' });
+    return sendJson(res, 200, { ok: true, muted_until: until });
+  }
+
   return sendJson(res, 404, { error: 'Not Found' });
+}
+
+/* =====================================================================
+   v4.5 - BALASAN & LIKE ULASAN, ROOM PUBLIK
+   Identitas = token perangkat bertanda tangan (bukan nama). Nama & centang developer
+   ditentukan SERVER dari data perangkat, jadi tidak bisa dipalsukan dari browser.
+   ===================================================================== */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const roomPresence = new Map(); // deviceId -> waktu terakhir terlihat di room
+const roomDeleted = [];         // { id, at } pesan room yang baru dihapus (agar klien lain ikut menghapus)
+const lastPost = new Map();     // deviceId -> { body, at } cegah kirim ulang isi yang sama berturut-turut
+
+function cleanText(v, max) {
+  return cleanMsg(v).replace(/\n{2,}/g, '\n').slice(0, max);
+}
+const isMuted = (dev) => !!(dev && dev.muted_until && Date.parse(dev.muted_until) > Date.now());
+const mutedText = (dev) => 'Kamu dibisukan admin sampai ' + new Date(dev.muted_until).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).replace(':', '.') + ' WIB.';
+function isDup(id, body) {
+  const l = lastPost.get(id), now = Date.now();
+  if (l && l.body === body && now - l.at < 30000) return true;
+  lastPost.set(id, { body, at: now });
+  if (lastPost.size > 5000) lastPost.clear();
+  return false;
+}
+
+// Siapkan pelaku: perangkat tercatat, nama dari server, status bisu. Mengirim respons error sendiri jika gagal.
+async function actor(req, res, nameRaw, write) {
+  if (write && !sameOrigin(req)) { sendJson(res, 403, { error: 'Permintaan ditolak.' }); return null; }
+  const ident = identify(req);
+  setIdentHeaders(req, res, ident);
+  if (!SB_READY) { sendJson(res, 503, { error: 'Fitur ini butuh Supabase. Isi .env dan jalankan supabase.sql.' }); return null; }
+  const dev = await touchDevice(ident, nameRaw);
+  if (!dev) { sendJson(res, 502, { error: 'Gagal mengenali perangkat. Coba lagi.' }); return null; }
+  return { ident, dev, admin: !!ident.admin };
+}
+function postingName(res, a) {
+  const nm = a.dev.name;
+  if (!nm || !goodName(nm)) { sendJson(res, 400, { error: 'Isi namamu dulu (menu profil) sebelum ikut berkomentar.' }); return null; }
+  if (isMuted(a.dev)) { sendJson(res, 403, { error: mutedText(a.dev), muted: true }); return null; }
+  return nm;
+}
+const isVerified = (dev) => !!(dev && dev.is_dev && dev.name && isReserved(dev.name));
+
+async function handleSocialStats(req, res, url) {
+  const a = await actor(req, res, '', false); if (!a) return;
+  if (rl('sst:' + a.ident.id, 40, 60000) || rl('sstip:' + a.ident.ip, 240, 60000)) return sendJson(res, 429, { error: 'Terlalu sering memuat.' });
+  const ids = String(url.searchParams.get('ids') || '').split(',').map((x) => x.trim().toLowerCase()).filter((x) => UUID_RE.test(x)).slice(0, 40);
+  if (!ids.length) return sendJson(res, 200, { stats: {} });
+  const r = await sb('POST', rest('rpc/am_review_social'), { ids, me: a.ident.id });
+  if (!r.ok) return sendJson(res, 502, { error: 'Gagal memuat balasan. Sudah menjalankan supabase.sql v4.5?' });
+  const stats = {};
+  (Array.isArray(r.data) ? r.data : []).forEach((x) => { stats[x.review_id] = { replies: Number(x.replies) || 0, likes: Number(x.likes) || 0, liked: !!x.liked }; });
+  sendJson(res, 200, { stats });
+}
+
+async function handleSocialReplies(req, res, url) {
+  const a = await actor(req, res, '', false); if (!a) return;
+  if (rl('srp:' + a.ident.id, 60, 60000) || rl('srpip:' + a.ident.ip, 300, 60000)) return sendJson(res, 429, { error: 'Terlalu sering memuat.' });
+  const rid = String(url.searchParams.get('review') || '').toLowerCase();
+  if (!UUID_RE.test(rid)) return sendJson(res, 400, { error: 'ID ulasan tidak valid.' });
+  const r = await sb('POST', rest('rpc/am_replies_list'), { rid, me: a.ident.id, lim: 200 });
+  if (!r.ok) return sendJson(res, 502, { error: 'Gagal memuat balasan. Sudah menjalankan supabase.sql v4.5?' });
+  const replies = (Array.isArray(r.data) ? r.data : []).map((x) => ({
+    id: x.id, name: x.name, verified: !!x.verified, to_name: x.to_name || '', body: x.body, created_at: x.created_at,
+    likes: Number(x.likes) || 0, liked: !!x.liked, mine: !!x.mine, can_del: !!x.mine || a.admin
+  }));
+  sendJson(res, 200, { replies });
+}
+
+async function handleSocialReply(req, res) {
+  const body = await readJson(req, 4096);
+  if (!body) return sendJson(res, 413, { error: 'Balasan terlalu besar.' });
+  const a = await actor(req, res, body.name, true); if (!a) return;
+  if (rl('srsend:' + a.ident.id, 6, 30000) || rl('srsendip:' + a.ident.ip, 40, 60000)) return sendJson(res, 429, { error: 'Terlalu cepat. Tunggu sebentar.' });
+  const nm = postingName(res, a); if (!nm) return;
+  const review = String(body.review || '').toLowerCase();
+  if (!UUID_RE.test(review)) return sendJson(res, 400, { error: 'ID ulasan tidak valid.' });
+  const text = cleanText(body.body, 400);
+  if (!text) return sendJson(res, 400, { error: 'Balasan kosong.' });
+  if (isDup(a.ident.id, 'r|' + review + '|' + text)) return sendJson(res, 429, { error: 'Balasan yang sama baru saja terkirim.' });
+  const exists = await sb('GET', rest(`reviews?id=eq.${review}&hidden=eq.false&select=id&limit=1`));
+  if (!exists.ok || !Array.isArray(exists.data) || !exists.data.length) return sendJson(res, 404, { error: 'Ulasan tidak ditemukan atau sudah dihapus.' });
+  const to = cleanName(body.to_name) || null;
+  const r = await sb('POST', rest('am_review_replies'), { review_id: review, device_id: a.ident.id, name: nm, verified: isVerified(a.dev), to_name: to, body: text }, { Prefer: 'return=representation' });
+  if (!r.ok || !Array.isArray(r.data) || !r.data[0]) return sendJson(res, 502, { error: 'Gagal mengirim balasan. Sudah menjalankan supabase.sql v4.5?' });
+  const x = r.data[0];
+  sendJson(res, 200, { ok: true, reply: { id: x.id, name: x.name, verified: !!x.verified, to_name: x.to_name || '', body: x.body, created_at: x.created_at, likes: 0, liked: false, mine: true, can_del: true } });
+}
+
+async function handleSocialLike(req, res) {
+  const body = await readJson(req, 1024);
+  if (!body) return sendJson(res, 413, { error: 'Permintaan terlalu besar.' });
+  const a = await actor(req, res, '', true); if (!a) return;
+  if (rl('slk:' + a.ident.id, 40, 30000) || rl('slkip:' + a.ident.ip, 200, 60000)) return sendJson(res, 429, { error: 'Terlalu cepat.' });
+  const kind = body.kind === 'p' ? 'p' : body.kind === 'r' ? 'r' : '';
+  const target = String(body.id == null ? '' : body.id).toLowerCase();
+  if (!kind || (kind === 'r' && !UUID_RE.test(target)) || (kind === 'p' && !/^\d{1,18}$/.test(target))) return sendJson(res, 400, { error: 'Target tidak valid.' });
+  const ex = await sb('GET', rest(kind === 'r' ? `reviews?id=eq.${target}&select=id&limit=1` : `am_review_replies?id=eq.${target}&select=id&limit=1`));
+  if (!ex.ok || !Array.isArray(ex.data) || !ex.data.length) return sendJson(res, 404, { error: 'Komentar sudah tidak ada.' });
+  const q = `am_likes?kind=eq.${kind}&target=eq.${target}&device_id=eq.${a.ident.id}`;
+  const had = await sb('GET', rest(q + '&select=kind&limit=1'));
+  const liked = !(had.ok && Array.isArray(had.data) && had.data.length);
+  if (liked) await sb('POST', rest('am_likes?on_conflict=kind,target,device_id'), { kind, target, device_id: a.ident.id }, { Prefer: 'resolution=ignore-duplicates,return=minimal' });
+  else await sb('DELETE', rest(q), undefined, MIN);
+  const count = await sbCount('am_likes', `kind=eq.${kind}&target=eq.${target}`);
+  sendJson(res, 200, { ok: true, liked, count });
+}
+
+async function handleSocialDelete(req, res) {
+  const body = await readJson(req, 1024);
+  if (!body) return sendJson(res, 413, { error: 'Permintaan terlalu besar.' });
+  const a = await actor(req, res, '', true); if (!a) return;
+  if (rl('sdl:' + a.ident.id, 20, 60000)) return sendJson(res, 429, { error: 'Terlalu cepat.' });
+  const id = String(body.id || '');
+  if (!/^\d{1,18}$/.test(id)) return sendJson(res, 400, { error: 'ID tidak valid.' });
+  const r = await sb('GET', rest(`am_review_replies?id=eq.${id}&select=id,device_id&limit=1`));
+  const row = r.ok && Array.isArray(r.data) ? r.data[0] : null;
+  if (!row) return sendJson(res, 404, { error: 'Balasan tidak ditemukan.' });
+  if (row.device_id !== a.ident.id && !a.admin) return sendJson(res, 403, { error: 'Hanya pemilik balasan yang bisa menghapusnya.' });
+  await sb('DELETE', rest(`am_review_replies?id=eq.${id}`), undefined, MIN);
+  await sb('DELETE', rest(`am_likes?kind=eq.p&target=eq.${id}`), undefined, MIN);
+  sendJson(res, 200, { ok: true });
+}
+
+/* ---------- Room publik ---------- */
+function roomOnline() {
+  const now = Date.now();
+  let n = 0;
+  for (const [k, t] of roomPresence) { if (now - t < 25000) n++; else roomPresence.delete(k); }
+  return n;
+}
+const ROOM_COLS = 'id,device_id,name,verified,body,reply_id,reply_name,reply_body,created_at';
+const roomOut = (m, a) => ({
+  id: m.id, name: m.name, verified: !!m.verified, body: m.body, reply_id: m.reply_id || null,
+  reply_name: m.reply_name || '', reply_body: m.reply_body || '', created_at: m.created_at,
+  mine: m.device_id === a.ident.id, can_del: m.device_id === a.ident.id || a.admin
+});
+function noteRoomDeleted(id) {
+  roomDeleted.push({ id: Number(id), at: Date.now() });
+  while (roomDeleted.length && Date.now() - roomDeleted[0].at > 10 * 60000) roomDeleted.shift();
+  if (roomDeleted.length > 500) roomDeleted.splice(0, roomDeleted.length - 500);
+}
+
+async function handleRoomGet(req, res, url) {
+  const a = await actor(req, res, '', false); if (!a) return;
+  if (rl('rmg:' + a.ident.id, 60, 60000) || rl('rmgip:' + a.ident.ip, 360, 60000)) return sendJson(res, 429, { error: 'Terlalu sering memuat.' });
+  roomPresence.set(a.ident.id, Date.now());
+  const after = Math.max(0, parseInt(url.searchParams.get('after'), 10) || 0);
+  let rows;
+  if (after > 0) {
+    const r = await sb('GET', rest(`am_room?id=gt.${after}&select=${ROOM_COLS}&order=id.asc&limit=100`));
+    rows = r.ok && Array.isArray(r.data) ? r.data : [];
+  } else {
+    const r = await sb('GET', rest(`am_room?select=${ROOM_COLS}&order=id.desc&limit=60`));
+    rows = r.ok && Array.isArray(r.data) ? r.data.reverse() : [];
+  }
+  const deleted = after > 0 ? roomDeleted.map((d) => d.id) : [];
+  sendJson(res, 200, { messages: rows.map((m) => roomOut(m, a)), deleted, online: roomOnline(), muted: isMuted(a.dev), me: !!a.dev.name });
+}
+
+async function handleRoomSend(req, res) {
+  const body = await readJson(req, 4096);
+  if (!body) return sendJson(res, 413, { error: 'Pesan terlalu besar.' });
+  const a = await actor(req, res, body.name, true); if (!a) return;
+  if (rl('rms:' + a.ident.id, 6, 20000) || rl('rmsip:' + a.ident.ip, 40, 60000)) return sendJson(res, 429, { error: 'Pesan terlalu cepat. Tunggu sebentar.' });
+  const nm = postingName(res, a); if (!nm) return;
+  const text = cleanText(body.body, 300);
+  if (!text) return sendJson(res, 400, { error: 'Pesan kosong.' });
+  if (isDup(a.ident.id, 'room|' + text)) return sendJson(res, 429, { error: 'Pesan yang sama baru saja terkirim.' });
+  const row = { device_id: a.ident.id, name: nm, verified: isVerified(a.dev), body: text };
+  const rid = String(body.reply_id || '');
+  if (/^\d{1,18}$/.test(rid)) {
+    const q = await sb('GET', rest(`am_room?id=eq.${rid}&select=id,name,body&limit=1`));
+    const t = q.ok && Array.isArray(q.data) ? q.data[0] : null;
+    if (t) { row.reply_id = t.id; row.reply_name = t.name; row.reply_body = String(t.body).replace(/\s+/g, ' ').slice(0, 80); }
+  }
+  roomPresence.set(a.ident.id, Date.now());
+  const r = await sb('POST', rest('am_room'), row, { Prefer: 'return=representation' });
+  if (!r.ok || !Array.isArray(r.data) || !r.data[0]) return sendJson(res, 502, { error: 'Gagal mengirim pesan. Sudah menjalankan supabase.sql v4.5?' });
+  sendJson(res, 200, { ok: true, message: roomOut(r.data[0], a) });
+}
+
+async function handleRoomDelete(req, res) {
+  const body = await readJson(req, 1024);
+  if (!body) return sendJson(res, 413, { error: 'Permintaan terlalu besar.' });
+  const a = await actor(req, res, '', true); if (!a) return;
+  if (rl('rmd:' + a.ident.id, 20, 60000)) return sendJson(res, 429, { error: 'Terlalu cepat.' });
+  const id = String(body.id || '');
+  if (!/^\d{1,18}$/.test(id)) return sendJson(res, 400, { error: 'ID tidak valid.' });
+  const r = await sb('GET', rest(`am_room?id=eq.${id}&select=id,device_id&limit=1`));
+  const row = r.ok && Array.isArray(r.data) ? r.data[0] : null;
+  if (!row) return sendJson(res, 404, { error: 'Pesan tidak ditemukan.' });
+  if (row.device_id !== a.ident.id && !a.admin) return sendJson(res, 403, { error: 'Hanya pengirim yang bisa menghapus pesan ini.' });
+  await sb('DELETE', rest(`am_room?id=eq.${id}`), undefined, MIN);
+  noteRoomDeleted(id);
+  sendJson(res, 200, { ok: true });
 }
 
 /* ---------- File statis ---------- */
@@ -948,6 +1241,11 @@ const server = http.createServer(async (req, res) => {
       if (pathname === '/api/dev/link') return await handleDevLink(req, res);
       if (pathname === '/api/chat/send') return await handleChatSend(req, res);
       if (pathname === '/api/chat/read') return await handleChatRead(req, res);
+      if (pathname === '/api/social/reply') return await handleSocialReply(req, res);
+      if (pathname === '/api/social/like') return await handleSocialLike(req, res);
+      if (pathname === '/api/social/delete') return await handleSocialDelete(req, res);
+      if (pathname === '/api/room/send') return await handleRoomSend(req, res);
+      if (pathname === '/api/room/delete') return await handleRoomDelete(req, res);
       if (pathname.startsWith('/api/admin/')) return await adminApi(req, res, url, pathname);
       return sendJson(res, 404, { error: 'Not Found' });
     }
@@ -956,6 +1254,9 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/visitor') return handleVisitor(req, res);
     if (pathname === '/api/chat') return await handleChatGet(req, res, url);
     if (pathname === '/api/chat/unread') return await handleChatUnread(req, res);
+    if (pathname === '/api/social/stats') return await handleSocialStats(req, res, url);
+    if (pathname === '/api/social/replies') return await handleSocialReplies(req, res, url);
+    if (pathname === '/api/room') return await handleRoomGet(req, res, url);
     if (pathname.startsWith('/api/admin/')) return await adminApi(req, res, url, pathname);
 
     // Konfigurasi publik untuk frontend (hanya anon key, bukan service key)
