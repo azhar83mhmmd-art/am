@@ -49,3 +49,8 @@ v4.5 - Balasan ulasan, like, room publik, kontrol admin per pengguna, perbaikan 
 
 ## v4.7
 - Popup donasi muncul setiap masuk dan muncul lagi tiap 4 menit setelah ditutup (atur di app.js: donatePop.EVERY).
+
+## v4.8 - Pindah domain
+- Website lama sudah pindah ke https://premifyy.kairoo.my.id/ dan tidak bisa digunakan lagi.
+- Semua halaman menampilkan pengumuman (public/index.html), semua /api/* mengembalikan 410.
+- Kode aplikasi lama disimpan di arsip/public-v4.7 (tidak dilayani server).
