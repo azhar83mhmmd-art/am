@@ -1053,6 +1053,7 @@ const channelPop = {
     setTimeout(() => {
       this.el.classList.add('hidden'); this.el.classList.remove('out');
       document.body.classList.remove('no-scroll');
+      if (typeof donatePop !== 'undefined') donatePop.request(650);
     }, REDUCED ? 0 : 280);
   },
   init() {
@@ -1068,6 +1069,52 @@ const channelPop = {
   }
 };
 channelPop.init();
+
+/* ---- Popup donasi (muncul setelah popup saluran WhatsApp ditutup) ---- */
+const donatePop = {
+  el: $('#dn-pop'), timer: 0,
+  EVERY: 4 * 60 * 1000, /* jeda muncul lagi setelah ditutup (ms) - ubah sesuai selera */
+  blocked() {
+    return $('#welcome').classList.contains('open') || !$('#warn-modal').classList.contains('hidden') || !$('#sheet').classList.contains('hidden') || !channelPop.el.classList.contains('hidden') || !$('#cmd').classList.contains('hidden') || document.hidden;
+  },
+  request(delay = 650) {
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => {
+      if (!this.el.classList.contains('hidden')) return;
+      if (this.blocked()) return this.request(1500);
+      this.open();
+    }, delay);
+  },
+  open() {
+    clearTimeout(this.timer);
+    this.el.classList.remove('hidden', 'out');
+    document.body.classList.add('no-scroll');
+    if (typeof FX !== 'undefined') FX.burstAt(innerWidth / 2, innerHeight * .32, 24, Math.PI * 2, 0, 8);
+    $('#dn-go').focus({ preventScroll: true });
+  },
+  close() {
+    if (this.el.classList.contains('hidden') || this.el.classList.contains('out')) return;
+    this.el.classList.add('out');
+    setTimeout(() => {
+      this.el.classList.add('hidden'); this.el.classList.remove('out');
+      document.body.classList.remove('no-scroll');
+      this.request(this.EVERY); /* muncul lagi, tidak hanya sekali */
+    }, REDUCED ? 0 : 280);
+  },
+  init() {
+    $$('[data-dn-close]', this.el).forEach((b) => b.addEventListener('click', () => this.close()));
+    $('#dn-go').addEventListener('click', () => {
+      if (typeof FX !== 'undefined') FX.burstAt(innerWidth / 2, innerHeight * .7, 50);
+      toast('Terima kasih atas dukunganmu!', 'ok');
+      setTimeout(() => this.close(), 350);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !this.el.classList.contains('hidden')) this.close();
+    });
+    this.request(2500); /* setiap awal masuk, juga jika popup saluran tidak tampil */
+  }
+};
+donatePop.init();
 
 /* ---- v4.1: bagikan, perintah cepat (Ctrl/Cmd+K), FAQ ---- */
 const SITE = { title: 'AM Premify - Premium Panel', text: 'Panel aktivasi VIP Alight Motion, otomatis dan real-time.' };
@@ -1102,7 +1149,7 @@ const cmd = {
       { g: 'AKSI', t: 'Chat WhatsApp admin', d: 'Pesan otomatis langsung terisi', i: 'wa', k: 'whatsapp wa hubungi admin bantuan chat', run: () => window.open(waLink(), '_blank', 'noopener') },
       { g: 'AKSI', t: 'Ikuti saluran kenzchillz', d: 'Update & info terbaru di WhatsApp', i: 'wa', k: 'saluran channel kenzchillz ikuti whatsapp', run: ext(CHANNEL_URL) },
       { g: 'AKSI', t: 'Bagikan website', d: 'Kirim link AM Premify ke orang lain', i: 'share', k: 'bagikan share salin link', run: shareSite },
-      { g: 'AKSI', t: 'Dukung developer', d: 'Donasi via Sociabuzz', i: 'heart', k: 'dukung donasi sociabuzz support', run: ext('https://sociabuzz.com/kenzchillz/tribe') },
+      { g: 'AKSI', t: 'Dukung developer', d: 'Donasi via Sociabuzz', i: 'heart', k: 'dukung donasi sociabuzz support', run: () => setTimeout(() => donatePop.open(), 200) },
       { g: 'PENGATURAN', t: 'Ganti nama', d: 'Ubah sapaan di dashboard', i: 'edit', k: 'nama panggilan ganti rename profil', run: () => setTimeout(() => welcome.open(true), 120) },
       { g: 'PENGATURAN', t: 'Efek partikel: nyala / mati', d: 'Konfeti, gelembung & jejak kursor', i: 'sparkle', k: 'efek partikel konfeti animasi fx', run: () => { const c = $('#fx-toggle'); c.checked = !c.checked; c.dispatchEvent(new Event('change')); } },
       { g: 'PENGATURAN', t: 'Ke atas', d: 'Gulir kembali ke paling atas', i: 'up', k: 'atas top scroll', run: () => scrollTo({ top: 0, behavior: 'smooth' }) }
@@ -1146,7 +1193,7 @@ const cmd = {
     this.el.classList.add('out');
     setTimeout(() => {
       this.el.classList.add('hidden'); this.el.classList.remove('out');
-      if (!channelPop.el.classList.contains('hidden') || !$('#sheet').classList.contains('hidden')) return;
+      if (!channelPop.el.classList.contains('hidden') || !donatePop.el.classList.contains('hidden') || !$('#sheet').classList.contains('hidden')) return;
       document.body.classList.remove('no-scroll');
     }, REDUCED ? 0 : 160);
   },
