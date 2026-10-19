@@ -49,6 +49,11 @@ const BLOCKED = ['server.js', 'package.json', 'package-lock.json', 'vercel.json'
 // URL bersih (tanpa .html) -> semuanya dilayani oleh index.html
 const PAGES = new Set(['/', '/index', '/premium', '/panduan', '/rating', '/ulasan', '/bukti', '/biodata', '/room']);
 const ADMIN_PAGE = '/admin';
+// v4.8: halaman Bypass Link (/bypass -> bypass.html) + proxy API
+const BYPASS_PAGE = '/bypass';
+const BYPASS_UPSTREAM = process.env.BYPASS_UPSTREAM || 'https://apiii-xrina.my.id/tools/bypassv2';
+// Batas permintaan bypass per IP dalam 5 menit
+const BYPASS_LIMIT = Number(process.env.BYPASS_LIMIT || 20);
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -1209,6 +1214,41 @@ async function handleRoomDelete(req, res) {
   sendJson(res, 200, { ok: true });
 }
 
+/* ---------- v4.8: Bypass Link (proxy ke API bypass) ---------- */
+async function handleBypass(req, res, url) {
+  const H = { 'X-Bypass-Proxy': '1' };
+  const out = (status, obj) => {
+    res.writeHead(status, Object.assign({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }, H));
+    res.end(JSON.stringify(obj));
+  };
+  if (!sameOrigin(req)) return out(403, { success: false, error: 'Permintaan ditolak.' });
+  const ip = clientIp(req);
+  if (rl('byp:' + ipKey(ip), BYPASS_LIMIT, 5 * 60000)) return out(429, { success: false, error: 'Terlalu banyak permintaan. Tunggu beberapa menit lalu coba lagi.' });
+
+  const target = String(url.searchParams.get('url') || '').trim();
+  let parsed;
+  try { parsed = new URL(target); } catch { parsed = null; }
+  if (!parsed || !/^https?:$/.test(parsed.protocol) || !parsed.hostname.includes('.') || target.length > 2000) {
+    return out(400, { success: false, error: 'Link tidak valid. Gunakan link http/https.' });
+  }
+  try {
+    const r = await fetch(BYPASS_UPSTREAM + '?url=' + encodeURIComponent(parsed.href), {
+      headers: { Accept: 'application/json', 'User-Agent': 'AM-Premify/4.8' },
+      signal: AbortSignal.timeout(45000)
+    });
+    const text = (await r.text()).slice(0, 300000);
+    res.writeHead(r.status, Object.assign({
+      'Content-Type': r.headers.get('content-type') || 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff'
+    }, H));
+    res.end(text);
+  } catch (err) {
+    const timeout = err && (err.name === 'TimeoutError' || err.name === 'AbortError');
+    out(timeout ? 504 : 502, { success: false, error: timeout ? 'API bypass terlalu lama merespons.' : 'API bypass tidak terjangkau.' });
+  }
+}
+
 /* ---------- File statis ---------- */
 function serveFile(res, rel, onMissing, extraHeaders) {
   const file = path.normalize(decodeURIComponent(rel)).replace(/^(\.\.[\/\\])+/, '');
@@ -1233,15 +1273,6 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const { pathname, search } = url;
 
-  // ===== Website pindah domain: semua layanan dihentikan =====
-  const NEW_SITE = 'https://premifyy.kairoo.my.id/';
-  if (pathname.startsWith('/api/') || pathname === '/config.js') {
-    return sendJson(res, 410, { error: 'Website ini sudah pindah dan tidak bisa digunakan lagi.', newUrl: NEW_SITE });
-  }
-  if (!path.extname(pathname)) {
-    return serveFile(res, '/index.html', null, { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow' });
-  }
-
   try {
     if (req.method === 'POST') {
       if (pathname === '/api/send-link' || pathname === '/api/verify-link') return await proxyUpstream(req, res, pathname);
@@ -1261,6 +1292,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method !== 'GET') return sendJson(res, 404, { error: 'Not Found' });
 
     if (pathname === '/api/visitor') return handleVisitor(req, res);
+    if (pathname === '/api/bypass') return await handleBypass(req, res, url);
     if (pathname === '/api/chat') return await handleChatGet(req, res, url);
     if (pathname === '/api/chat/unread') return await handleChatUnread(req, res);
     if (pathname === '/api/social/stats') return await handleSocialStats(req, res, url);
@@ -1280,6 +1312,9 @@ const server = http.createServer(async (req, res) => {
         'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer'
       });
     }
+
+    // Halaman Bypass Link: /bypass -> bypass.html
+    if (pathname === BYPASS_PAGE) return serveFile(res, '/bypass.html');
 
     // URL bersih: /index.html -> /index
     if (pathname.endsWith('.html')) {
@@ -1304,6 +1339,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`[AM Premify] Panel aktif di: http://localhost:${PORT}/index`);
   console.log(`[AM Premify] Upstream: ${UPSTREAM}`);
+  console.log(`[AM Premify] Bypass: http://localhost:${PORT}${BYPASS_PAGE}  (API: ${BYPASS_UPSTREAM})`);
   if (!process.env.TURNSTILE_SITE_KEY || !process.env.TURNSTILE_SECRET_KEY) {
     console.log('[AM Premify] Turnstile: pakai kunci UJI (selalu lolos). Isi TURNSTILE_SITE_KEY & TURNSTILE_SECRET_KEY di .env untuk produksi.');
   }
