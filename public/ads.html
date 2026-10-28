@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Iklan</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #fff; font-family: system-ui, sans-serif; }
+  body { display: flex; align-items: center; justify-content: center; }
+  .slot { width: 100%; min-height: 250px; display: flex; align-items: center; justify-content: center; }
+  .demo { text-align: center; padding: 18px; color: #0d0d0d; }
+  .demo b { display: block; font-size: 1rem; margin-bottom: 6px; }
+  .demo span { font-size: .8rem; opacity: .7; line-height: 1.5; display: block; }
+</style>
+</head>
+<body>
+<div class="slot" id="slot">
+
+  <!-- Iklan Adsterra Spanduk 300x250 -->
+  <script>
+    atOptions = {
+      'key' : 'c35ca08c043bebeda93cba7cf541a77b',
+      'format' : 'iframe',
+      'height' : 250,
+      'width' : 300,
+      'params' : {}
+    };
+  </script>
+  <script src="https://bauval.org/22/c35ca08c043bebeda93cba7cf541a77b"></script>
+  <div class="demo" id="adfail" style="display:none"><b>Iklan belum termuat</b><span>Matikan AdBlock / DNS pribadi, tunggu beberapa menit, atau cek status website di Adsterra.</span></div>
+  <script>setTimeout(function () { if (!document.querySelector('#slot iframe')) document.getElementById('adfail').style.display = 'block'; }, 8000);</script>
+
+</div>
+</body>
+</html>
