@@ -1,188 +1,261 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
+  <script src="/maintenance.js"></script>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#ffd23f">
-  <meta name="description" content="Bypass link shortener dengan cepat. Tempel link, tekan Bypass, dapatkan link tujuan. Bagian dari AM Premify.">
-  <title>AM Premify - Bypass Link</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/style.css">
-  <link rel="stylesheet" href="/ui.css">
-  <link rel="stylesheet" href="/responsive.css">
-  <link rel="stylesheet" href="/bypass.css">
-  <script>
-    (function(){try{var a=JSON.parse(localStorage.getItem('am_accent')||'null'); if(a) document.documentElement.setAttribute('data-accent',a);}catch(e){}})();
-  </script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#16a34a">
+<title>Bypass Link | AM Premify</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0a0a0a; --paper:#f3fff0; --green:#22c55e; --lime:#bef264; --yellow:#fde047; --pink:#f472b6; --white:#fff;
+  --b:3px solid var(--ink); --sh:6px 6px 0 var(--ink);
+}
+*{box-sizing:border-box;margin:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:'Space Grotesk',system-ui,sans-serif;color:var(--ink);background:var(--paper);
+  background-image:radial-gradient(var(--ink) 1.2px,transparent 1.2px);background-size:22px 22px;
+  min-height:100vh;padding:calc(18px + env(safe-area-inset-top,0px)) 16px calc(40px + env(safe-area-inset-bottom,0px));
+}
+.wrap{max-width:760px;margin:0 auto}
+nav{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px}
+nav a{
+  text-decoration:none;color:var(--ink);font-weight:700;padding:10px 16px;border:var(--b);background:var(--white);
+  box-shadow:4px 4px 0 var(--ink);transition:transform .12s,box-shadow .12s;
+}
+nav a:hover{transform:translate(2px,2px);box-shadow:2px 2px 0 var(--ink)}
+nav a.on{background:var(--green)}
+.hero{background:var(--green);border:var(--b);box-shadow:var(--sh);padding:26px 22px;margin-bottom:24px;position:relative}
+.hero .tag{position:absolute;top:-16px;right:14px;background:var(--yellow);border:var(--b);padding:4px 12px;font-family:'Space Mono',monospace;font-weight:700;font-size:13px;transform:rotate(3deg)}
+h1{font-size:clamp(2.2rem,8vw,3.6rem);line-height:.95;letter-spacing:-1.5px}
+.hero p{margin-top:12px;font-weight:500;max-width:46ch}
+.card{background:var(--white);border:var(--b);box-shadow:var(--sh);padding:20px;margin-bottom:24px}
+.card h2{font-size:1.25rem;margin-bottom:12px}
+label{display:block;font-weight:700;margin-bottom:8px}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+input[type=url],input[type=text]{
+  flex:1 1 240px;min-width:0;font:500 1rem 'Space Mono',monospace;padding:14px;border:var(--b);background:var(--paper);outline:none;
+}
+input:focus{background:var(--lime);box-shadow:4px 4px 0 var(--ink)}
+button{
+  font:700 1rem 'Space Grotesk',sans-serif;cursor:pointer;color:var(--ink);padding:14px 20px;border:var(--b);background:var(--yellow);
+  box-shadow:4px 4px 0 var(--ink);transition:transform .12s,box-shadow .12s;
+}
+button:hover:not(:disabled){transform:translate(2px,2px);box-shadow:2px 2px 0 var(--ink)}
+button:active:not(:disabled){transform:translate(4px,4px);box-shadow:0 0 0 var(--ink)}
+button:disabled{opacity:.55;cursor:not-allowed}
+button.go{background:var(--green)}
+button.alt{background:var(--white)}
+:focus-visible{outline:4px solid var(--pink);outline-offset:2px}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.chip{border:2px solid var(--ink);background:var(--lime);padding:3px 10px;font-weight:700;font-size:.85rem}
+.term{background:var(--ink);color:var(--lime);border:var(--b);box-shadow:var(--sh);margin-bottom:24px}
+.term-bar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--yellow);color:var(--ink);border-bottom:var(--b);font:700 .85rem 'Space Mono',monospace}
+.dot{width:12px;height:12px;border:2px solid var(--ink);border-radius:50%;background:var(--pink)}
+.dot:nth-child(2){background:var(--white)}.dot:nth-child(3){background:var(--green)}
+#log{font:400 .88rem/1.6 'Space Mono',monospace;padding:14px;min-height:130px;max-height:260px;overflow:auto;white-space:pre-wrap;word-break:break-word}
+#log .err{color:#fca5a5}#log .ok{color:#86efac}#log .dim{color:#a3a3a3}
+.result{display:none;background:var(--lime);border:var(--b);box-shadow:var(--sh);padding:20px;margin-bottom:24px}
+.result.show{display:block;animation:pop .25s ease-out}
+@keyframes pop{from{transform:scale(.96)}to{transform:scale(1)}}
+.result h2{margin-bottom:10px}
+#out{display:block;background:var(--white);border:var(--b);padding:12px;font:700 .95rem 'Space Mono',monospace;word-break:break-all;margin-bottom:14px;text-decoration:none;color:var(--ink)}
+.hist-item{display:flex;gap:10px;justify-content:space-between;align-items:center;border:2px solid var(--ink);padding:8px 10px;margin-bottom:8px;background:var(--paper);font:400 .8rem 'Space Mono',monospace}
+.hist-item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.hist-item button{padding:4px 10px;font-size:.8rem;box-shadow:2px 2px 0 var(--ink)}
+.empty{font-weight:500;color:#444}
+footer{text-align:center;font:700 .85rem 'Space Mono',monospace}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;padding:20px;z-index:50}
+.modal.show{display:flex}
+.modal .box{background:var(--white);border:var(--b);box-shadow:8px 8px 0 var(--ink);padding:24px;max-width:380px;width:100%;animation:pop .25s ease-out}
+.modal h3{font-size:1.4rem;margin-bottom:8px}
+.modal p{margin-bottom:16px}
+.modal .row button{flex:1}
+.modal a.wa{flex:1;text-align:center;text-decoration:none;font-weight:700;color:var(--ink);padding:14px;border:var(--b);background:var(--green);box-shadow:4px 4px 0 var(--ink)}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translate(-50%,120px);background:var(--ink);color:var(--lime);border:var(--b);padding:10px 18px;font-weight:700;transition:transform .25s;z-index:60}
+.toast.show{transform:translate(-50%,0)}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
 </head>
-<body class="by-page">
+<body>
+<div class="wrap">
+  <nav>
+    <a href="/">Premify</a>
+    <a href="/bypass" class="on">Bypass</a>
+  </nav>
 
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <defs>
-    <symbol id="i-code" viewBox="0 0 24 24"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></symbol>
-    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></symbol>
-    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></symbol>
-    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></symbol>
-    <symbol id="i-crown" viewBox="0 0 24 24"><path d="M2 18h20M3 7l4.5 5L12 5l4.5 7L21 7l-2 11H5z"/></symbol>
-    <symbol id="i-book" viewBox="0 0 24 24"><path d="M2 4h7a3 3 0 0 1 3 3v14a2 2 0 0 0-2-2H2zM22 4h-7a3 3 0 0 0-3 3v14a2 2 0 0 1 2-2h8z"/></symbol>
-    <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 2l3.1 6.3 6.9 1-5 4.9 1.2 6.8-6.2-3.3-6.2 3.3L8 14.2 3 9.3l6.9-1z"/></symbol>
-    <symbol id="i-users" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
-    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
-    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5"/></symbol>
-    <symbol id="i-paste" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></symbol>
-    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="1"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></symbol>
-    <symbol id="i-ext" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></symbol>
-    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
-    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/></symbol>
-    <symbol id="i-fail" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/></symbol>
-    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
-    <symbol id="i-terminal" viewBox="0 0 24 24"><path d="M4 17l6-6-6-6M12 19h8"/></symbol>
-    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1L5 6"/></symbol>
-    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
-    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
-    <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.900 5.100L19 10l-5.100 1.900L12 17l-1.900-5.100L5 10l5.100-1.900zM19 16l.8 2.200L22 19l-2.200.8L19 22l-.8-2.200L16 19l2.200-.8z"/></symbol>
-    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M23 4v6h-6M1 20v-6h6M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/></symbol>
-    <symbol id="i-wa" viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8z"/><path d="M9 9.5c.3 2 2.5 4.2 4.5 4.5l1.3-1.3-1.8-1-.8.7c-.8-.4-1.5-1.1-1.9-1.9l.7-.8-1-1.8z"/></symbol>
-    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21.2l7.8-7.7 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></symbol>
-    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
-    <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M11 18l-6-6 6-6"/></symbol>
-    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></symbol>
-    <symbol id="i-chev" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></symbol>
-    <symbol id="i-ok" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/></symbol>
-    <symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
-    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></symbol>
-  </defs>
-</svg>
+  <header class="hero">
+    <div class="tag">v1.0</div>
+    <h1>Bypass Link</h1>
+    <p>Tempel link yang dilindungi, dapatkan link tujuannya. Gratis, tanpa daftar.</p>
+  </header>
 
-<header class="topbar">
-  <div class="topbar-in">
-    <a class="brand" href="/index" aria-label="AM Premify">
-      <div class="logo"><svg class="ic"><use href="#i-bolt"/></svg></div>
-      <div>
-        <h1>AM Premify</h1>
-        <span class="tag">BYPASS LINK</span>
-      </div>
-    </a>
-    <nav class="tabs" role="tablist">
-      <a class="tab" href="/index" role="tab"><svg class="ic"><use href="#i-grid"/></svg><span>Dashboard</span></a>
-      <a class="tab" href="/premium" role="tab"><svg class="ic"><use href="#i-shield"/></svg><span>Premiumkan</span></a>
-      <a class="tab active" href="/bypass" role="tab" aria-selected="true"><svg class="ic"><use href="#i-link"/></svg><span>Bypass</span></a>
-      <a class="tab" href="/panduan" role="tab"><svg class="ic"><use href="#i-book"/></svg><span>Panduan</span></a>
-      <a class="tab" href="/rating" role="tab"><svg class="ic"><use href="#i-star"/></svg><span>Rating</span></a>
-      <a class="tab" href="/room" role="tab"><svg class="ic"><use href="#i-users"/></svg><span>Room</span></a>
-    </nav>
-    <div class="top-actions">
-      <a class="menu-btn" href="/index" aria-label="Kembali ke dashboard" title="Kembali ke dashboard"><svg class="ic"><use href="#i-back"/></svg></a>
+  <section class="card">
+    <h2>Masukkan link</h2>
+    <label for="url">Link yang mau di-bypass</label>
+    <div class="row">
+      <input id="url" type="url" inputmode="url" placeholder="https://sfl.gl/q3lfk94" autocomplete="off">
+      <button class="alt" id="paste" type="button">Tempel</button>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="go" id="run" type="button" style="flex:1">Bypass sekarang</button>
+    </div>
+    <div class="chips">
+      <span class="chip">sfl.gl</span><span class="chip">shortlink umum</span><span class="chip">via API xrina</span>
+    </div>
+  </section>
+
+  <section class="result" id="result" aria-live="polite">
+    <h2>Link tujuan</h2>
+    <a id="out" href="#" target="_blank" rel="noopener noreferrer"></a>
+    <div class="row">
+      <button class="go" id="open" type="button">Buka link</button>
+      <button class="alt" id="copy" type="button">Salin link</button>
+    </div>
+  </section>
+
+  <section class="term">
+    <div class="term-bar"><i class="dot"></i><i class="dot"></i><i class="dot"></i><span>bypass_terminal.log</span></div>
+    <div id="log" role="log"><span class="dim">Menunggu link...</span></div>
+  </section>
+
+  <section class="card">
+    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h2 style="margin:0">Riwayat</h2>
+      <button class="alt" id="clearHist" type="button" style="padding:6px 12px;font-size:.85rem">Hapus semua</button>
+    </div>
+    <div id="hist"></div>
+  </section>
+
+  <footer>AM Premify &middot; Bypass by kenz</footer>
+</div>
+
+<div class="modal" id="wa" role="dialog" aria-modal="true" aria-labelledby="waT">
+  <div class="box">
+    <h3 id="waT">Ikuti saluran WhatsApp</h3>
+    <p>Dapatkan info update dan tools terbaru dari kenzchillz.</p>
+    <div class="row">
+      <a class="wa" href="https://whatsapp.com/channel/0029Vb99yLaK0IBgYkp9KR2q" target="_blank" rel="noopener noreferrer" id="waGo">Ikuti saluran</a>
+      <button class="alt" id="waClose" type="button">Nanti</button>
     </div>
   </div>
-  <div class="ticker" aria-hidden="true"><div class="ticker-track"><span>BYPASS LINK <i>&#9733;</i> TEMPEL &amp; BYPASS <i>&#9733;</i> CEPAT <i>&#9733;</i> GRATIS <i>&#9733;</i> PERIKSA LINK SEBELUM DIBUKA <i>&#9733;</i></span><span>BYPASS LINK <i>&#9733;</i> TEMPEL &amp; BYPASS <i>&#9733;</i> CEPAT <i>&#9733;</i> GRATIS <i>&#9733;</i> PERIKSA LINK SEBELUM DIBUKA <i>&#9733;</i></span></div></div>
-</header>
+</div>
+<div class="toast" id="toast" role="status"></div>
 
-<main class="container">
-  <div class="by-wrap">
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var urlEl=$('url'),runEl=$('run'),logEl=$('log'),resEl=$('result'),outEl=$('out');
+  var API='https://apiii-xrina.my.id/tools/bypassv2?url=';
+  var HKEY='bypass_history_v1',current='';
 
-    <section class="card hero by-hero">
-      <span class="shape s-circle"></span><span class="shape s-square"></span><span class="shape s-ring"></span>
-      <div class="by-badges">
-        <span class="chip"><svg class="ic"><use href="#i-bolt"/></svg>CEPAT</span>
-        <span class="chip gold"><svg class="ic"><use href="#i-sparkle"/></svg>GRATIS</span>
-        <span class="chip by-hello hidden" id="by-hello"><svg class="ic"><use href="#i-check"/></svg><span></span></span>
-      </div>
-      <h2>Bypass <mark>Link</mark></h2>
-      <p>Tempel link shortener, tekan satu tombol, dan dapatkan link tujuannya langsung tanpa iklan berlapis.</p>
-    </section>
+  function log(msg,cls){
+    if(logEl.firstChild&&logEl.firstChild.className==='dim'&&logEl.childNodes.length===1)logEl.innerHTML='';
+    var s=document.createElement('div');if(cls)s.className=cls;
+    var t=new Date().toLocaleTimeString('id-ID',{hour12:false});
+    s.textContent='['+t+'] '+msg;logEl.appendChild(s);logEl.scrollTop=logEl.scrollHeight;
+  }
+  function toast(m){var t=$('toast');t.textContent=m;t.classList.add('show');setTimeout(function(){t.classList.remove('show')},1800)}
+  function validUrl(u){try{var x=new URL(u);return x.protocol==='http:'||x.protocol==='https:'}catch(e){return false}}
 
-    <section class="card by-form" aria-labelledby="by-title">
-      <div class="by-label" id="by-title"><span class="by-num">1</span>Tempel link</div>
-      <div class="by-field-row">
-        <div class="field" id="by-field">
-          <svg class="ic"><use href="#i-link"/></svg>
-          <input class="input" id="by-input" type="text" inputmode="url" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://sfl.gl/q3lfk94" aria-label="Link yang akan di-bypass">
-          <button class="by-clear" id="by-clear" type="button" aria-label="Hapus isi"><svg class="ic sm"><use href="#i-x"/></svg></button>
-        </div>
-        <button class="by-icon-btn" id="by-paste" type="button" aria-label="Tempel dari clipboard" title="Tempel dari clipboard"><svg class="ic"><use href="#i-paste"/></svg><span class="by-ic-t">Tempel dari clipboard</span></button>
-      </div>
-      <div class="by-hint">Contoh: <button class="by-ex" type="button" data-ex="https://sfl.gl/q3lfk94"><svg class="ic sm"><use href="#i-link"/></svg>sfl.gl/q3lfk94</button></div>
-      <button class="btn" id="by-go" type="button"><svg class="ic"><use href="#i-refresh"/></svg><span id="by-go-t">Bypass Sekarang</span></button>
-      <div class="by-warn"><svg class="ic sm"><use href="#i-alert"/></svg><span>Selalu periksa alamat link tujuan sebelum membuka. Jangan memasukkan kata sandi atau data pribadi di situs yang tidak kamu kenal.</span></div>
-    </section>
+  /* cari link hasil dari berbagai bentuk respon */
+  function pick(obj,input){
+    var keys=['result','url','link','destination','bypassed','bypass','direct','target','data','download'];
+    var i,v;
+    if(typeof obj==='string')return validUrl(obj.trim())?obj.trim():null;
+    if(Array.isArray(obj)){for(i=0;i<obj.length;i++){v=pick(obj[i],input);if(v)return v}return null}
+    if(obj&&typeof obj==='object'){
+      for(i=0;i<keys.length;i++){if(keys[i] in obj){v=pick(obj[keys[i]],input);if(v&&v!==input)return v}}
+      for(var k in obj){v=pick(obj[k],input);if(v&&v!==input)return v}
+    }
+    return null;
+  }
 
-    <section class="card by-res hidden" id="res" aria-live="polite">
-      <div class="by-res-head">
-        <span class="by-stamp"><svg class="ic sm"><use href="#i-ok"/></svg><span id="res-stamp-t">BERHASIL</span></span>
-        <span class="by-meta" id="res-meta"></span>
-      </div>
-      <span class="by-url" id="res-url"></span>
-      <div class="by-actions">
-        <a class="btn btn-dark" id="res-open" href="#" target="_blank" rel="noopener noreferrer nofollow"><svg class="ic"><use href="#i-ext"/></svg>Buka Link</a>
-        <button class="btn btn-sand" id="res-copy" type="button"><svg class="ic"><use href="#i-copy"/></svg>Salin Link</button>
-      </div>
-      <div class="by-others hidden" id="res-others"><h4>Link lain dari API</h4><div id="res-others-list" class="by-others"></div></div>
-      <div class="by-raw-wrap" id="res-raw-wrap">
-        <details class="by-raw"><summary><svg class="ic sm"><use href="#i-code"/></svg>Lihat respons mentah</summary><pre id="res-raw"></pre></details>
-      </div>
-    </section>
+  async function callApi(link){
+    var q=encodeURIComponent(link),res,txt;
+    try{
+      res=await fetch('/api/bypass?url='+q);
+      if(res.status===404)throw new Error('proxy tidak ada');
+      log('Lewat proxy server','dim');
+    }catch(e){
+      log('Proxy tidak tersedia, mencoba langsung ke API','dim');
+      res=await fetch(API+q);
+    }
+    txt=await res.text();
+    if(!res.ok)throw new Error('API membalas status '+res.status);
+    try{return JSON.parse(txt)}catch(e){return txt}
+  }
 
-    <div class="term" id="term">
-      <div class="term-bar">
-        <div class="dots"><i></i><i></i><i></i></div>
-        <div class="term-title"><svg class="ic sm"><use href="#i-terminal"/></svg>bypass_terminal.log</div>
-        <div class="term-actions">
-          <button class="tbtn" id="term-copy" type="button" title="Salin log"><svg class="ic sm"><use href="#i-copy"/></svg><span>Salin</span></button>
-          <button class="tbtn icon" id="term-clear" type="button" title="Bersihkan log"><svg class="ic sm"><use href="#i-trash"/></svg></button>
-          <button class="tbtn icon" id="term-toggle" type="button" title="Ciutkan"><svg class="ic sm"><use href="#i-chev"/></svg></button>
-        </div>
-      </div>
-      <div class="term-body" id="term-body" role="log" aria-live="polite"></div>
-    </div>
+  async function run(){
+    var link=urlEl.value.trim();
+    resEl.classList.remove('show');
+    if(!validUrl(link)){log('Link tidak valid. Awali dengan http:// atau https://','err');urlEl.focus();return}
+    runEl.disabled=true;runEl.textContent='Memproses...';
+    log('Target: '+link);log('Mengirim permintaan bypass...');
+    try{
+      var data=await callApi(link);
+      var found=pick(data,link);
+      if(!found){
+        log('Respon diterima tapi link tujuan tidak ditemukan.','err');
+        log(typeof data==='string'?data.slice(0,300):JSON.stringify(data).slice(0,300),'dim');
+      }else{
+        current=found;outEl.textContent=found;outEl.href=found;
+        resEl.classList.add('show');log('Berhasil: '+found,'ok');
+        save(link,found);resEl.scrollIntoView({behavior:'smooth',block:'center'});
+      }
+    }catch(e){
+      log('Gagal: '+e.message,'err');
+      log('Cek koneksi, pastikan link benar, atau coba lagi nanti.','dim');
+    }finally{runEl.disabled=false;runEl.textContent='Bypass sekarang'}
+  }
 
-    <section class="card" aria-labelledby="hist-title">
-      <div class="by-hist-head">
-        <h3 class="card-title" id="hist-title"><svg class="ic"><use href="#i-clock"/></svg>Riwayat</h3>
-        <button class="tbtn hidden" id="hist-clear" type="button"><svg class="ic sm"><use href="#i-trash"/></svg><span>Hapus semua</span></button>
-      </div>
-      <ul class="by-hist" id="hist"></ul>
-    </section>
+  function load(){try{return JSON.parse(localStorage.getItem(HKEY))||[]}catch(e){return []}}
+  function save(from,to){
+    var h=load().filter(function(x){return x.to!==to});h.unshift({from:from,to:to});
+    try{localStorage.setItem(HKEY,JSON.stringify(h.slice(0,10)))}catch(e){}render();
+  }
+  function render(){
+    var h=load(),box=$('hist');box.innerHTML='';
+    if(!h.length){box.innerHTML='<p class="empty">Belum ada riwayat. Hasil bypass akan muncul di sini.</p>';return}
+    h.forEach(function(x){
+      var d=document.createElement('div');d.className='hist-item';
+      var s=document.createElement('span');s.textContent=x.to;s.title=x.to;
+      var b=document.createElement('button');b.type='button';b.textContent='Salin';
+      b.onclick=function(){copy(x.to)};d.appendChild(s);d.appendChild(b);box.appendChild(d);
+    });
+  }
+  function copy(t){
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(function(){toast('Link disalin')},function(){toast('Gagal menyalin')})}
+    else{var a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();try{document.execCommand('copy');toast('Link disalin')}catch(e){toast('Gagal menyalin')}a.remove()}
+  }
 
-    <section class="card">
-      <h3 class="card-title"><svg class="ic"><use href="#i-book"/></svg>Cara pakai</h3>
-      <div class="by-steps" style="margin-top:16px">
-        <div class="by-step"><span class="g-num">1</span><h3>Salin link</h3><p>Salin link shortener yang mau dibuka, misalnya dari chat atau deskripsi video.</p></div>
-        <div class="by-step"><span class="g-num">2</span><h3>Tempel &amp; Bypass</h3><p>Tempel di kolom di atas, lalu tekan tombol Bypass Sekarang dan tunggu prosesnya.</p></div>
-        <div class="by-step"><span class="g-num">3</span><h3>Buka hasilnya</h3><p>Periksa alamat tujuan, lalu buka atau salin link hasilnya.</p></div>
-      </div>
-      <div class="by-faq">
-        <details><summary>Kenapa bypass gagal?<svg class="ic sm"><use href="#i-down"/></svg></summary><p>Link mungkin sudah kedaluwarsa, salah ketik, atau jenisnya belum didukung oleh layanan bypass. Coba cek link di browser, lalu ulangi beberapa saat lagi.</p></details>
-        <details><summary>Apakah riwayatku tersimpan di server?<svg class="ic sm"><use href="#i-down"/></svg></summary><p>Tidak. Riwayat hanya disimpan di browser perangkatmu (maksimal 10) dan bisa dihapus kapan saja lewat tombol Hapus semua.</p></details>
-        <details><summary>Apakah link hasil pasti aman?<svg class="ic sm"><use href="#i-down"/></svg></summary><p>Tidak ada jaminan. Hasil berasal dari situs lain, jadi selalu periksa alamatnya dulu dan hindari mengunduh file yang mencurigakan.</p></details>
-      </div>
-    </section>
+  runEl.onclick=run;
+  urlEl.addEventListener('keydown',function(e){if(e.key==='Enter')run()});
+  $('paste').onclick=function(){
+    if(!navigator.clipboard||!navigator.clipboard.readText){toast('Tempel manual dengan menekan lama');return}
+    navigator.clipboard.readText().then(function(t){urlEl.value=t.trim();urlEl.focus()},function(){toast('Izin clipboard ditolak')});
+  };
+  $('open').onclick=function(){if(current)window.open(current,'_blank','noopener')};
+  $('copy').onclick=function(){if(current)copy(current)};
+  $('clearHist').onclick=function(){try{localStorage.removeItem(HKEY)}catch(e){}render();toast('Riwayat dihapus')};
 
-    <section class="card by-support">
-      <h3>Suka dengan tools ini?</h3>
-      <p>Ikuti saluran WhatsApp untuk update terbaru atau dukung developer agar website terus berkembang.</p>
-      <div class="by-actions">
-        <a class="btn wa" href="https://whatsapp.com/channel/0029Vb99yLaK0IBgYkp9KR2q" target="_blank" rel="noopener noreferrer"><svg class="ic"><use href="#i-wa"/></svg>Saluran kenzchillz</a>
-        <a class="btn" href="https://sociabuzz.com/kenzchillz/tribe" target="_blank" rel="noopener noreferrer"><svg class="ic"><use href="#i-heart"/></svg>Dukung developer</a>
-      </div>
-    </section>
+  /* link otomatis dari ?url= */
+  var pre=new URLSearchParams(location.search).get('url');
+  if(pre){urlEl.value=pre}
 
-  </div>
-</main>
+  /* popup saluran WhatsApp setiap masuk */
+  var wa=$('wa');wa.classList.add('show');
+  function closeWa(){wa.classList.remove('show')}
+  $('waClose').onclick=closeWa;$('waGo').onclick=closeWa;
+  wa.addEventListener('click',function(e){if(e.target===wa)closeWa()});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')closeWa()});
 
-<footer class="footer">AM Premify v4.8 &bull; Bypass Link &bull; Developer kenz</footer>
-
-<nav class="dock by-dock" aria-label="Navigasi utama">
-  <a class="dock-i" href="/index"><span class="dock-ic"><svg class="ic"><use href="#i-grid"/></svg></span><span class="dock-t">Beranda</span></a>
-  <a class="dock-i" href="/premium"><span class="dock-ic"><svg class="ic"><use href="#i-crown"/></svg></span><span class="dock-t">Premium</span></a>
-  <a class="dock-i dock-main active" href="/bypass" aria-current="page"><span class="dock-ic"><svg class="ic"><use href="#i-link"/></svg></span><span class="dock-t">Bypass</span></a>
-  <a class="dock-i" href="/rating"><span class="dock-ic"><svg class="ic"><use href="#i-star"/></svg></span><span class="dock-t">Rating</span></a>
-  <a class="dock-i" href="/room"><span class="dock-ic"><svg class="ic"><use href="#i-users"/></svg></span><span class="dock-t">Room</span></a>
-</nav>
-
-<div id="toast" class="toast"></div>
-<script src="/bypass.js"></script>
+  render();
+})();
+</script>
 </body>
 </html>
