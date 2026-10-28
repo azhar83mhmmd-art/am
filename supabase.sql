@@ -505,3 +505,101 @@ grant execute on function public.am_review_social(uuid[], text) to service_role;
 grant execute on function public.am_replies_list(uuid, text, int) to service_role;
 grant execute on function public.am_users_admin(text, boolean, text, int) to service_role;
 grant execute on function public.am_user_acts(text, int) to service_role;
+
+-- =====================================================================
+-- v4.8 - KUNCI PREMIUM (1 iklan = 1 kunci = 1 akun premium)
+-- Aman dijalankan berulang kali. Tabel PRIVAT: hanya server (service_role).
+-- =====================================================================
+
+-- 31) Saldo kunci per perangkat
+create table if not exists public.am_keys (
+  device_id  text primary key,
+  keys       int         not null default 0 check (keys >= 0),
+  earned     int         not null default 0,   -- total kunci yang pernah didapat dari iklan
+  used       int         not null default 0,   -- total kunci yang dipakai untuk aktivasi
+  updated_at timestamptz not null default now()
+);
+
+-- 32) Catatan klaim iklan (nonce unik = satu sesi iklan hanya bisa diklaim sekali)
+create table if not exists public.am_ad_claims (
+  nonce      text primary key,
+  device_id  text        not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists am_ad_claims_dev_idx on public.am_ad_claims (device_id, created_at desc);
+
+alter table public.am_keys enable row level security;
+alter table public.am_ad_claims enable row level security;
+-- Tanpa policy = browser tidak bisa membaca/menulis; service_role (server) tetap bisa.
+
+-- 33) Klaim 1 kunci setelah iklan selesai.
+--     Hasil: saldo baru | -1 sesi sudah dipakai | -2 kunci penuh | -3 batas harian | -4 terlalu cepat
+create or replace function public.am_key_claim(p_device text, p_nonce text, p_max int, p_daily int, p_gap int)
+returns int language plpgsql security definer set search_path = public as $$
+declare v int; n int; last_at timestamptz;
+begin
+  perform pg_advisory_xact_lock(hashtext('am_key:' || p_device));
+  select count(*), max(created_at) into n, last_at
+    from am_ad_claims where device_id = p_device and created_at > now() - interval '24 hours';
+  if n >= p_daily then return -3; end if;
+  if last_at is not null and now() - last_at < make_interval(secs => p_gap) then return -4; end if;
+  begin
+    insert into am_ad_claims (nonce, device_id) values (p_nonce, p_device);
+  exception when unique_violation then
+    return -1;
+  end;
+  insert into am_keys (device_id) values (p_device) on conflict (device_id) do nothing;
+  update am_keys set keys = keys + 1, earned = earned + 1, updated_at = now()
+    where device_id = p_device and keys < p_max returning keys into v;
+  if v is null then
+    delete from am_ad_claims where nonce = p_nonce;
+    return -2;
+  end if;
+  return v;
+end $$;
+
+-- 34) Pakai 1 kunci (atomik). Hasil: saldo baru | -1 tidak ada kunci
+create or replace function public.am_key_use(p_device text)
+returns int language plpgsql security definer set search_path = public as $$
+declare v int;
+begin
+  update am_keys set keys = keys - 1, used = used + 1, updated_at = now()
+    where device_id = p_device and keys > 0 returning keys into v;
+  if v is null then return -1; end if;
+  return v;
+end $$;
+
+-- 35) Kembalikan 1 kunci bila aktivasi gagal di upstream
+create or replace function public.am_key_refund(p_device text)
+returns int language plpgsql security definer set search_path = public as $$
+declare v int;
+begin
+  insert into am_keys (device_id) values (p_device) on conflict (device_id) do nothing;
+  update am_keys set keys = keys + 1, used = greatest(used - 1, 0), updated_at = now()
+    where device_id = p_device returning keys into v;
+  return v;
+end $$;
+
+revoke all on function public.am_key_claim(text, text, int, int, int) from public, anon, authenticated;
+revoke all on function public.am_key_use(text) from public, anon, authenticated;
+revoke all on function public.am_key_refund(text) from public, anon, authenticated;
+grant execute on function public.am_key_claim(text, text, int, int, int) to service_role;
+grant execute on function public.am_key_use(text) to service_role;
+grant execute on function public.am_key_refund(text) to service_role;
+
+-- (Opsional) beri kunci manual ke perangkat tertentu:
+-- insert into public.am_keys (device_id, keys) values ('ID_PERANGKAT', 3)
+--   on conflict (device_id) do update set keys = public.am_keys.keys + 3;
+
+-- =====================================================================
+-- v4.9 - MODE MAINTENANCE (diatur dari /admin > Maintenance)
+-- =====================================================================
+-- 36) Pengaturan situs (key/value). Dipakai server untuk menyimpan teks & status maintenance.
+create table if not exists public.am_settings (
+  key        text primary key,
+  value      jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+alter table public.am_settings enable row level security;
+revoke all on public.am_settings from anon, authenticated;
+-- Tanpa policy = browser tidak bisa membaca/menulis; service_role (server) tetap bisa.
