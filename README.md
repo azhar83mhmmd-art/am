@@ -50,7 +50,28 @@ v4.5 - Balasan ulasan, like, room publik, kontrol admin per pengguna, perbaikan 
 ## v4.7
 - Popup donasi muncul setiap masuk dan muncul lagi tiap 4 menit setelah ditutup (atur di app.js: donatePop.EVERY).
 
-## v4.8 - Pindah domain
-- Website lama sudah pindah ke https://premifyy.kairoo.my.id/ dan tidak bisa digunakan lagi.
-- Semua halaman menampilkan pengumuman (public/index.html), semua /api/* mengembalikan 410.
-- Kode aplikasi lama disimpan di arsip/public-v4.7 (tidak dilayani server).
+## v4.8 - Kunci premium lewat iklan
+- 1 iklan ditonton = 1 kunci. 1 kunci dipakai tiap "Verifikasi & Aktifkan VIP" berhasil. Tanpa kunci: tidak bisa kirim magic link maupun aktivasi (dicek di SERVER, bukan hanya tombol).
+- Kartu "Kunci Premium" di halaman Premium menampilkan saldo + tombol "Tonton Iklan". Saat menekan Kirim Magic Link / Verifikasi dengan saldo 0, popup iklan terbuka otomatis lalu proses lanjut setelah kunci didapat.
+- Popup iklan: timer AD_SECONDS detik (default 15), hanya berjalan saat tab terlihat. Server menerbitkan token bertanda tangan saat iklan mulai dan hanya mau memberi kunci jika waktu benar-benar sudah lewat. Satu sesi iklan hanya bisa diklaim sekali, ada jeda antar klaim, batas simpan KEY_MAX, dan batas harian KEY_DAILY per perangkat.
+- Kunci dipotong sebelum menghubungi upstream, dan DIKEMBALIKAN otomatis kalau aktivasi gagal.
+- Developer (perangkat "kenz") JUGA wajib menonton iklan (v4.8.1). Hanya KEYS_REQUIRED=false yang mematikan sistem kunci.
+- Iklan kosong di popup? Buka /ads langsung. Kalau di sana muncul tapi di popup kosong, sandbox membatasi kode iklan: isi AD_SAME_ORIGIN=true (kurang aman) atau taruh ads.html di domain terpisah lalu isi AD_FRAME_URL.
+- PASANG IKLAN: buka `public/ads.html`, tempel kode dari jaringan iklan (Adsterra, Monetag, PropellerAds, dll.) menggantikan blok "SLOT IKLAN". Halaman ini tampil di iframe ber-sandbox. Atau isi AD_FRAME_URL dengan URL penuh halaman iklan di domain lain.
+- WAJIB: jalankan ulang supabase.sql (bagian v4.8), lalu restart server. Tanpa Supabase, saldo kunci hanya di memori (cukup untuk uji lokal).
+- Catatan jujur: tanpa postback server-ke-server dari jaringan iklan, sistem tidak bisa memastikan iklan benar-benar dilihat, hanya bahwa pengguna menunggu penuh durasi di halaman. Untuk bukti tayang yang kuat, pakai jaringan iklan "rewarded" yang punya callback server.
+
+## v4.8.2 - Gerbang pemblokir iklan
+- Pengguna yang memakai DNS pemblokir iklan (AdGuard DNS, NextDNS, Private DNS pemblokir, Blokada) atau ekstensi AdBlock/uBlock tidak bisa memakai website: muncul popup yang tidak bisa ditutup berisi cara mematikan DNS/pemblokirnya. Popup hilang otomatis begitu iklan bisa dimuat (dicek tiap 4 detik, atau tombol "cek lagi").
+- Cara kerja: browser mencoba menjangkau server iklan (alamatnya diambil otomatis dari skrip pertama di public/ads.html, atau isi AD_PROBE_URL). Jika gagal padahal website kita sendiri terjangkau, berarti diblokir. Pengguna offline tidak terkena gerbang.
+- Matikan dengan AD_BLOCK_GATE=false, atau otomatis nonaktif jika KEYS_REQUIRED=false / ads.html belum berisi kode iklan.
+- Catatan jujur: ini pemeriksaan di browser, bukan pengaman mutlak. Orang yang paham teknis bisa melewatinya. Pemblokir yang hanya memblokir sebagian domain iklan (bukan domain skrip utama) juga bisa lolos. Gerbang ini bisa salah menahan pengguna jika server iklan sedang gangguan atau diblokir provider.
+
+## v4.9 - Mode Maintenance
+- Admin: buka /admin > tab **Maintenance**. Nyalakan saklar, atur label, judul, pesan, estimasi selesai (opsional, tampil sebagai hitung mundur), dan tombol kontak (opsional), lalu **Simpan**. Pratinjau di sebelah kanan ikut berubah saat mengetik.
+- Saat aktif, semua pengunjung melihat halaman maintenance dan website tidak bisa dipakai: halaman diganti (HTTP 503), semua API publik ditolak di SERVER (bukan hanya tampilan), dan halaman yang sudah terbuka otomatis tertutup dalam hitungan detik (dicek tiap 15 dtk).
+- Admin yang sedang login di /admin tetap bisa membuka website untuk uji coba (muncul pita kecil "MAINTENANCE AKTIF" di atas). Buka dari jendela lain / mode samaran untuk melihat tampilan pengunjung, atau buka /maintenance?preview=1.
+- Opsi "Buka otomatis saat estimasi lewat": website terbuka sendiri begitu waktu estimasi selesai, tanpa perlu menekan tombol lagi.
+- Tidak perlu variabel .env baru.
+- WAJIB: jalankan ulang supabase.sql (bagian v4.9, membuat tabel am_settings), lalu restart server.
+- Catatan jujur: halaman & API dijaga di server. Pemeriksaan di browser hanya untuk menutup halaman yang sudah terbuka. Pengunjung yang memakai Supabase anon key langsung (di luar website ini) tidak ikut dihentikan, karena itu di luar kendali server.
