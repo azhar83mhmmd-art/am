@@ -63,7 +63,8 @@
     tab: 'usr', acts: [], actMore: true, threads: [], devs: [], q: '', unread: -1, authed: false,
     conv: null, timers: [], lastErr: false,
     users: [], uq: '', usort: 'acts', uonly: true, uopen: new Set(), uacts: new Map(),
-    csub: 'room', com: [], online: 0
+    csub: 'room', com: [], online: 0,
+    mnt: { loaded: false, dirty: false, active: false, saving: false }
   };
   const VB = '<svg class="vb" viewBox="0 0 24 24" role="img" aria-label="Developer terverifikasi"><title>Developer terverifikasi</title><path fill="#1d9bf0" stroke="#0d0d0d" stroke-width="1.3" d="M12 1.8l2.4 1.7 2.9-.2 1 2.8 2.5 1.6-.9 2.8.9 2.8-2.5 1.6-1 2.8-2.9-.2L12 20.2l-2.4-1.7-2.9.2-1-2.8-2.5-1.6.9-2.8-.9-2.8 2.5-1.6 1-2.8 2.9.2z"/><path d="M7.8 12.2l3 3 5.6-6" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
@@ -112,7 +113,7 @@
     const [p, q] = h.split('?');
     const [tab, id] = p.split('/');
     return {
-      tab: ['usr', 'act', 'chat', 'dev', 'com'].includes(tab) ? tab : 'usr',
+      tab: ['usr', 'act', 'chat', 'dev', 'com', 'mnt'].includes(tab) ? tab : 'usr',
       id: /^[0-9a-f]{32}$/.test(id || '') ? id : '',
       act: Number(new URLSearchParams(q || '').get('act')) || 0
     };
@@ -124,9 +125,10 @@
     const h = parseHash();
     S.tab = h.tab;
     $$('.adm-tab').forEach((b) => { const on = b.dataset.tab === h.tab; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); });
-    ['usr', 'act', 'chat', 'dev', 'com'].forEach((t) => $('#tab-' + t).classList.toggle('hidden', t !== h.tab));
+    ['usr', 'act', 'chat', 'dev', 'com', 'mnt'].forEach((t) => $('#tab-' + t).classList.toggle('hidden', t !== h.tab));
     if (h.tab === 'usr') loadUsers();
     if (h.tab === 'com') loadCom();
+    if (h.tab === 'mnt') loadMnt();
     if (h.tab === 'act') loadActs(false);
     if (h.tab === 'dev') loadDevs();
     if (h.tab === 'chat') {
@@ -147,6 +149,8 @@
     const badge = $('#tab-badge');
     badge.textContent = d.unread > 99 ? '99+' : d.unread;
     badge.classList.toggle('hidden', !d.unread);
+    $('#mnt-badge').classList.toggle('hidden', !d.maintenance);
+    if (S.mnt.active !== !!d.maintenance && S.mnt.loaded && !S.mnt.dirty && S.tab === 'mnt') loadMnt(true);
     document.title = (d.unread ? `(${d.unread}) ` : '') + 'Admin - AM Premify';
     if (S.unread >= 0 && d.unread > S.unread && !(S.tab === 'chat' && S.conv)) toast('Pesan baru dari pengguna');
     S.unread = d.unread;
@@ -656,6 +660,130 @@
     else if (el.dataset.do === 'del-rep') delCom('rep', id);
     else if (el.dataset.do === 'block') doBlock(id);
     else if (el.dataset.do === 'unblock') doUnblock(id);
+  });
+
+  /* ---------- tab Maintenance (v4.9) ---------- */
+  const MNT_PRESETS = [
+    { badge: 'Pembaruan sistem', title: 'Sedang pembaruan sistem', message: 'Kami sedang memasang pembaruan supaya website lebih cepat, aman, dan stabil.\nAkun dan data kamu tetap aman. Website akan terbuka kembali otomatis setelah selesai.' },
+    { badge: 'Perbaikan server', title: 'Server sedang diperbaiki', message: 'Ada gangguan pada server yang sedang kami tangani. Mohon maaf atas ketidaknyamanannya.\nCoba lagi beberapa saat lagi, halaman ini akan terbuka sendiri begitu masalah teratasi.' },
+    { badge: 'Pindah domain', title: 'Kami sudah pindah alamat', message: 'Website ini tidak lagi dipakai karena sudah pindah ke alamat baru.\nSilakan buka alamat terbaru lewat tombol di bawah.' }
+  ];
+  const pad2 = (n) => String(n).padStart(2, '0');
+  function toLocalInput(iso) {
+    const t = iso ? new Date(iso) : null;
+    if (!t || isNaN(t)) return '';
+    return `${t.getFullYear()}-${pad2(t.getMonth() + 1)}-${pad2(t.getDate())}T${pad2(t.getHours())}:${pad2(t.getMinutes())}`;
+  }
+  function mntForm() {
+    const eta = $('#mnt-eta').value;
+    const d = eta ? new Date(eta) : null;
+    return {
+      enabled: $('#mnt-on').checked,
+      badge: $('#mnt-lbl').value.trim(),
+      title: $('#mnt-title').value.trim(),
+      message: $('#mnt-msg').value.trim(),
+      eta: d && !isNaN(d) ? d.toISOString() : '',
+      auto_open: $('#mnt-auto').checked,
+      contact_label: $('#mnt-clabel').value.trim(),
+      contact_url: $('#mnt-curl').value.trim()
+    };
+  }
+  function mntCounts() {
+    [['lbl', 'lbl', 30], ['title', 'title', 80], ['msg', 'msg', 600]].forEach(([c, f, max]) => { $('#c-' + c).textContent = $('#mnt-' + f).value.length + '/' + max; });
+  }
+  function mntFill(d) {
+    $('#mnt-on').checked = !!d.enabled;
+    $('#mnt-lbl').value = d.badge || '';
+    $('#mnt-title').value = d.title || '';
+    $('#mnt-msg').value = d.message || '';
+    $('#mnt-eta').value = toLocalInput(d.eta);
+    $('#mnt-auto').checked = !!d.auto_open;
+    $('#mnt-clabel').value = d.contact_label || '';
+    $('#mnt-curl').value = d.contact_url || '';
+    mntCounts();
+  }
+  function mntPreview() {
+    const f = $('#mnt-frame');
+    if (!f || !f.contentWindow) return;
+    try { f.contentWindow.postMessage({ type: 'mt-preview', data: mntForm() }, location.origin); } catch {}
+  }
+  let mntPrevT;
+  const mntPreviewSoon = () => { clearTimeout(mntPrevT); mntPrevT = setTimeout(mntPreview, 120); };
+
+  function mntStatus() {
+    const on = $('#mnt-on').checked, act = S.mnt.active;
+    const st = $('#mnt-state');
+    st.textContent = act ? 'AKTIF · pengunjung melihat halaman maintenance' : on ? 'Akan aktif setelah disimpan' : 'Nonaktif · website berjalan normal';
+    $('#mnt-sw').classList.toggle('live', act);
+    $('#mnt-warn').classList.toggle('hidden', !(on && !act));
+    const b = $('#mnt-save'), label = $('span', b);
+    label.textContent = S.mnt.saving ? 'Menyimpan…' : on && !act ? 'Simpan & Aktifkan' : !on && act ? 'Simpan & Matikan' : 'Simpan';
+    b.classList.toggle('go', on && !act);
+    b.disabled = S.mnt.saving;
+  }
+  function mntSavedNote(d) {
+    $('#mnt-saved').textContent = d && d.updated_at ? 'Terakhir disimpan ' + stamp(d.updated_at) : '';
+  }
+
+  async function loadMnt(force) {
+    if (S.mnt.dirty && !force) return;
+    try {
+      const d = await api('/api/admin/maintenance');
+      S.mnt.active = !!d.active;
+      if (!S.mnt.dirty || force) { mntFill(d); S.mnt.dirty = false; }
+      S.mnt.loaded = true;
+      mntStatus(); mntSavedNote(d);
+      $('#mnt-badge').classList.toggle('hidden', !d.active);
+      mntPreviewSoon();
+    } catch (e) { if (e.message !== 'Sesi berakhir') $('#mnt-err').textContent = e.message; }
+  }
+
+  async function mntSave() {
+    const body = mntForm();
+    $('#mnt-err').textContent = '';
+    if (body.contact_url && !/^https?:\/\//i.test(body.contact_url)) { $('#mnt-err').textContent = 'Tautan tombol harus diawali https://'; $('#mnt-curl').focus(); return; }
+    if (body.eta && Date.parse(body.eta) <= Date.now() && body.auto_open) { $('#mnt-err').textContent = 'Estimasi sudah lewat, website akan langsung terbuka otomatis. Ubah estimasi atau matikan opsi buka otomatis.'; return; }
+    const apply = async () => {
+      S.mnt.saving = true; mntStatus();
+      try {
+        const d = await api('/api/admin/maintenance', { method: 'POST', body });
+        S.mnt.active = !!d.active; S.mnt.dirty = false;
+        mntFill(d); mntSavedNote(d);
+        $('#mnt-badge').classList.toggle('hidden', !d.active);
+        toast(d.active ? 'Maintenance AKTIF. Website ditutup untuk pengunjung' : 'Tersimpan. Website berjalan normal', d.active ? '' : 'ok');
+        mntPreviewSoon();
+      } finally { S.mnt.saving = false; mntStatus(); }
+    };
+    try {
+      if (body.enabled && !S.mnt.active) {
+        const r = await UI.confirm({
+          tone: 'warn', icon: 'alert',
+          title: 'Aktifkan mode maintenance?',
+          message: 'Semua pengunjung akan langsung melihat halaman maintenance dan tidak bisa memakai website.',
+          itemsTitle: 'Yang terjadi', itemIcon: 'check',
+          items: [
+            'Halaman diganti dan semua API publik ditolak di server',
+            'Halaman yang sedang dibuka pengunjung tertutup dalam hitungan detik',
+            'Kamu (admin) tetap bisa membuka website untuk uji coba'
+          ],
+          confirmText: 'Aktifkan sekarang', busyText: 'Menyimpan…',
+          onConfirm: apply
+        });
+        if (!r) return;
+      } else await apply();
+    } catch (e) { if (e.message !== 'Sesi berakhir') $('#mnt-err').textContent = e.message; }
+  }
+
+  const mntTab = $('#tab-mnt');
+  mntTab.addEventListener('input', () => { S.mnt.dirty = true; mntCounts(); mntStatus(); mntPreviewSoon(); });
+  $('#mnt-eta-x').addEventListener('click', () => { $('#mnt-eta').value = ''; S.mnt.dirty = true; mntPreviewSoon(); });
+  $('#mnt-save').addEventListener('click', mntSave);
+  $('#mnt-frame').addEventListener('load', () => { if (S.mnt.loaded) mntPreviewSoon(); });
+  $('#mnt-presets').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-p]'); if (!b) return;
+    const p = MNT_PRESETS[Number(b.dataset.p)]; if (!p) return;
+    $('#mnt-lbl').value = p.badge; $('#mnt-title').value = p.title; $('#mnt-msg').value = p.message;
+    S.mnt.dirty = true; mntCounts(); mntPreviewSoon();
   });
 
   /* ---------- mulai ---------- */
