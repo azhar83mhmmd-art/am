@@ -41,6 +41,7 @@
     <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></symbol>
     <symbol id="i-ok" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/></symbol>
     <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+    <symbol id="i-tool" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></symbol>
     <symbol id="i-out" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
   </defs>
 </svg>
@@ -87,6 +88,7 @@
       <button class="adm-tab" role="tab" data-tab="chat" type="button"><svg class="ic"><use href="#i-msg"/></svg>Chat<span class="abadge hidden" id="tab-badge">0</span></button>
       <button class="adm-tab" role="tab" data-tab="dev" type="button"><svg class="ic"><use href="#i-user"/></svg>Perangkat</button>
       <button class="adm-tab" role="tab" data-tab="com" type="button"><svg class="ic"><use href="#i-msg"/></svg>Komunitas</button>
+      <button class="adm-tab" role="tab" data-tab="mnt" type="button"><svg class="ic"><use href="#i-tool"/></svg>Maintenance<span class="abadge hidden" id="mnt-badge">ON</span></button>
     </nav>
 
     <section id="tab-usr">
@@ -126,6 +128,60 @@
         <button type="button" data-sub="rep">Balasan ulasan</button>
       </div>
       <div class="adm-list" id="com-list"></div>
+    </section>
+
+    <section id="tab-mnt" class="hidden">
+      <div class="mnt">
+        <div class="mnt-form">
+          <div class="mnt-sw" id="mnt-sw">
+            <div class="mnt-sw-t">
+              <span class="mnt-ic"><svg class="ic"><use href="#i-tool"/></svg></span>
+              <div><b>Mode Maintenance</b><small id="mnt-state">Memuat…</small></div>
+            </div>
+            <label class="sw" aria-label="Aktifkan mode maintenance"><input type="checkbox" id="mnt-on"><span class="sw-k"></span></label>
+          </div>
+          <p class="mnt-warn hidden" id="mnt-warn"><svg class="ic"><use href="#i-alert"/></svg><span>Setelah disimpan, semua pengunjung langsung melihat halaman maintenance dan website tidak bisa dipakai. Kamu (admin) tetap bisa membukanya.</span></p>
+
+          <div class="mnt-pre">
+            <small>Isi cepat</small>
+            <div class="seg" id="mnt-presets" role="group" aria-label="Contoh teks">
+              <button type="button" data-p="0">Pembaruan sistem</button>
+              <button type="button" data-p="1">Perbaikan server</button>
+              <button type="button" data-p="2">Pindah domain</button>
+            </div>
+          </div>
+
+          <label class="mnt-l"><span>Label status <em id="c-lbl">0/30</em></span>
+            <span class="field"><input class="input" id="mnt-lbl" maxlength="30" placeholder="mis. Pemeliharaan" autocomplete="off"></span></label>
+          <label class="mnt-l"><span>Judul <em id="c-title">0/80</em></span>
+            <span class="field"><input class="input" id="mnt-title" maxlength="80" placeholder="mis. Kami sedang berbenah" autocomplete="off"></span></label>
+          <label class="mnt-l"><span>Pesan untuk pengunjung <em id="c-msg">0/600</em></span>
+            <span class="field top"><textarea class="input" id="mnt-msg" rows="5" maxlength="600" placeholder="Jelaskan apa yang sedang dikerjakan dan kapan website kembali."></textarea></span></label>
+
+          <div class="mnt-l"><span>Estimasi selesai <i>(opsional, tampil sebagai hitung mundur)</i></span>
+            <span class="field"><input class="input" id="mnt-eta" type="datetime-local"><button class="ibtn" id="mnt-eta-x" type="button">Hapus</button></span></div>
+          <label class="chk mnt-chk"><input type="checkbox" id="mnt-auto"><span>Buka website otomatis saat estimasi lewat</span></label>
+
+          <div class="mnt-2">
+            <label class="mnt-l"><span>Tombol kontak <i>(opsional)</i></span>
+              <span class="field"><input class="input" id="mnt-clabel" maxlength="30" placeholder="mis. Saluran WhatsApp" autocomplete="off"></span></label>
+            <label class="mnt-l"><span>Tautan tombol <i>(https://…)</i></span>
+              <span class="field"><input class="input" id="mnt-curl" maxlength="300" type="url" inputmode="url" placeholder="https://…" autocomplete="off"></span></label>
+          </div>
+
+          <p class="adm-err" id="mnt-err" role="alert"></p>
+          <div class="mnt-acts">
+            <button class="btn btn-dark" id="mnt-save" type="button"><svg class="ic"><use href="#i-check"/></svg><span>Simpan</span></button>
+            <a class="ibtn" href="/maintenance?preview=1" target="_blank" rel="noopener"><svg class="ic"><use href="#i-globe"/></svg>Tampilan penuh</a>
+          </div>
+          <small class="mnt-saved" id="mnt-saved"></small>
+        </div>
+
+        <div class="mnt-prev">
+          <div class="mnt-prev-bar"><i></i><b>Pratinjau langsung</b><small>belum disimpan ikut tampil</small></div>
+          <iframe id="mnt-frame" src="/maintenance?preview=1" title="Pratinjau halaman maintenance" loading="lazy"></iframe>
+        </div>
+      </div>
     </section>
   </main>
 </div>
