@@ -38,7 +38,6 @@ function show(view, push = true) {
   window.dispatchEvent(new CustomEvent('am:view', { detail: { view } }));
 }
 $$('.tab, .dock-i[data-tab]').forEach((t) => t.addEventListener('click', (e) => {
-  if (!t.dataset.tab) return; // tab halaman lain (mis. /bypass): navigasi biasa
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return; // buka di tab baru tetap normal
   e.preventDefault();
   if (navigator.vibrate && t.classList.contains('dock-i')) navigator.vibrate(8);
@@ -197,6 +196,7 @@ async function postJson(url, payload) {
   let data;
   try { data = await res.json(); } catch { data = { success: false, error: 'Respon tidak valid dari server' }; }
   if (res.status === 403 && data && data.blocked) Device.setBlocked(true, '');
+  if (res.status === 402 && data && data.noKey && window.Keys) Keys.setKeys(0);
   const ok = res.ok && data.success !== false && !data.error;
   return { ok, data, status: res.status };
 }
@@ -249,6 +249,8 @@ $('#send-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const email = $('#email').value.trim();
   const btn = $('#send-btn');
+  // v4.8: butuh kunci (tonton iklan dulu bila habis)
+  if (window.Keys && !(await Keys.need())) { term.log('warn', 'Butuh 1 kunci. Tonton iklan untuk mendapatkannya.'); return toast('Butuh 1 kunci: tonton iklan dulu', 'err'); }
   setBtn(btn, true, 'Mengirim...');
   term.log('info', `[*] Menghubungi server verifikasi untuk ${email}...`);
   try {
@@ -277,6 +279,7 @@ $('#verify-form').addEventListener('submit', async (e) => {
     term.log('warn', 'Email target belum diisi. Isi email di Langkah 1 terlebih dahulu.');
     return toast('Isi email target dulu di langkah 1', 'err');
   }
+  if (window.Keys && !(await Keys.need())) { term.log('warn', 'Butuh 1 kunci. Tonton iklan untuk mendapatkannya.'); return toast('Butuh 1 kunci: tonton iklan dulu', 'err'); }
   if (!cf.token) {
     term.log('warn', 'Selesaikan verifikasi manusia (Cloudflare) terlebih dahulu.');
     return toast('Selesaikan verifikasi manusia dulu', 'err');
@@ -1140,7 +1143,6 @@ const cmd = {
       { g: 'NAVIGASI', t: 'Dashboard', d: 'Statistik & aktivitas real-time', i: 'grid', k: 'beranda home dashboard', run: go('home') },
       { g: 'NAVIGASI', t: 'Premiumkan Akun', d: 'Kirim magic link & aktifkan VIP', i: 'crown', k: 'premium vip aktivasi email', run: go('premium') },
       { g: 'NAVIGASI', t: 'Panduan', d: '3 langkah + pertanyaan umum', i: 'book', k: 'panduan bantuan faq cara', run: go('guide') },
-      { g: 'NAVIGASI', t: 'Bypass Link', d: 'Buka link shortener langsung ke tujuan', i: 'link', k: 'bypass link shortener sfl skip iklan tujuan', run: () => { location.href = '/bypass'; } },
       { g: 'NAVIGASI', t: 'Biodata Developer', d: 'Kenali pembuat website ini', i: 'user', k: 'biodata developer kenz profil', run: go('bio') },
       { g: 'NAVIGASI', t: 'Rating & Ulasan', d: 'Rating keseluruhan dari pengguna', i: 'star', k: 'rating ulasan bintang review nilai', run: () => (window.Reviews ? Reviews.go('rating') : show('reviews')) },
       { g: 'NAVIGASI', t: 'Bukti Sukses', d: 'Screenshot akun premium dari pengguna', i: 'image', k: 'bukti sukses screenshot akun testimoni', run: () => (window.Reviews ? Reviews.go('bukti') : show('reviews')) },
