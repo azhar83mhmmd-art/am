@@ -1,6 +1,6 @@
 {
   "name": "am-premify",
-  "version": "4.8.0",
+  "version": "4.9.0",
   "description": "AM Premify - Premium Panel",
   "main": "server.js",
   "scripts": {
